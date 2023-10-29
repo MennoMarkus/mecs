@@ -145,19 +145,24 @@ void test_query(void)
 {
     mecs_registry_t* registry;
     mecs_entity_t entity0, entity1; 
-    mecs_query_it_t query0, query1, query2;
-    size_t query0_count, query1_count, query2_count;
+    test_comp_4* comp4;
+    test_comp_8* comp8;
+    mecs_query_it_t query0, query1, query2, query3;
+    size_t query0_count, query1_count, query2_count, query3_count;
 
     registry = mecs_registry_create(2);
     MECS_COMPONENT_REGISTER(registry, test_comp_4);
     MECS_COMPONENT_REGISTER(registry, test_comp_8);
 
     entity0 = mecs_entity_create(registry);
-    mecs_component_add(registry, entity0, test_comp_4);
-    mecs_component_add(registry, entity0, test_comp_8);
+    comp4 = mecs_component_add(registry, entity0, test_comp_4);
+    comp8 = mecs_component_add(registry, entity0, test_comp_8);
+    comp4->v = 4;
+    comp8->v = 8;
 
     entity1 = mecs_entity_create(registry);
-    mecs_component_add(registry, entity1, test_comp_4);
+    comp8 = mecs_component_add(registry, entity1, test_comp_8);
+    comp8->v = 8;
 
     query0 = mecs_query_create();
     mecs_query_with(&query0, test_comp_4);
@@ -165,28 +170,52 @@ void test_query(void)
     query0_count = 0;
     for(mecs_query_begin(registry, &query0); mecs_query_next(&query0);)
     {
+        test_uint(mecs_query_entity_get(&query0), entity0);
+        test_uint(mecs_query_component_has(&query0, test_comp_4, 0), MECS_TRUE);
+        test_uint(mecs_query_component_has(&query0, test_comp_8, 1), MECS_TRUE);
+        test_uint(mecs_query_component_get(&query0, test_comp_4, 0)->v, 4);
+        test_uint(mecs_query_component_get(&query0, test_comp_8, 1)->v, 8);
         query0_count += 1;
     }
     test_uint(query0_count, 1);
 
     query1 = mecs_query_create();
-    mecs_query_with(&query1, test_comp_4);
+    mecs_query_with(&query1, test_comp_8);
     query1_count = 0;
     for(mecs_query_begin(registry, &query1); mecs_query_next(&query1);)
     {
+        test_uint(mecs_query_component_has(&query1, test_comp_8, 0), MECS_TRUE);
+        test_uint(mecs_query_component_get(&query1, test_comp_8, 0)->v, 8);
         query1_count += 1;
     }
     test_uint(query1_count, 2);
 
     query2 = mecs_query_create();
-    mecs_query_with(&query2, test_comp_4);
+    mecs_query_without(&query2, test_comp_4);
     mecs_query_with(&query2, test_comp_8);
     query2_count = 0;
     for(mecs_query_begin(registry, &query2); mecs_query_next(&query2);)
     {
+        test_uint(mecs_query_entity_get(&query2), entity1);
+        test_uint(mecs_query_component_has(&query2, test_comp_8, 1), MECS_TRUE);
+        test_uint(mecs_query_component_get(&query2, test_comp_8, 1)->v, 8);
         query2_count += 1;
     }
     test_uint(query2_count, 1);
+
+    query3 = mecs_query_create();
+    mecs_query_optional(&query3, test_comp_4);
+    mecs_query_with(&query3, test_comp_8);
+    query3_count = 0;
+    for(mecs_query_begin(registry, &query3); mecs_query_next(&query3);)
+    {
+        if(mecs_query_entity_get(&query3) == entity0) test_uint(mecs_query_component_has(&query3, test_comp_4, 0), MECS_TRUE);
+        if(mecs_query_entity_get(&query3) == entity1) test_uint(mecs_query_component_has(&query3, test_comp_4, 0), MECS_FALSE);
+        test_uint(mecs_query_component_has(&query3, test_comp_8, 1), MECS_TRUE);
+        test_uint(mecs_query_component_get(&query3, test_comp_8, 1)->v, 8);
+        query3_count += 1;
+    }
+    test_uint(query3_count, 2);
 
     mecs_registry_destroy(registry);
 }

@@ -118,8 +118,9 @@ typedef struct
 } mecs_registry_t;
 
 typedef mecs_uint8_t mecs_query_type_t; 
-#define MECS_QUERY_TYPE_WITH     (1 << 0)
-#define MECS_QUERY_TYPE_WITHOUT  (1 << 1)
+#define MECS_QUERY_TYPE_WITH     0
+#define MECS_QUERY_TYPE_WITHOUT  1
+#define MECS_QUERY_TYPE_OPTIONAL 2
 #define MECS_QUERY_MAX_LEN 15
 
 typedef struct 
@@ -135,8 +136,10 @@ typedef struct
        The query argument with the smallest number of entities we have to iterate is used as the base. */
     mecs_entity_t* current;   
     mecs_entity_t* end;
-    size_t base_arg_idx;
-    mecs_registry_t* registry; 
+    mecs_component_store_t* component_stores; 
+
+    /* Evaluating a query only touches the sparse arrays, but chache the dense index as we likely need it to access the component data. */
+    mecs_sparse_t sparse_elements[MECS_QUERY_MAX_LEN]; 
 
     size_t args_len;
     mecs_query_arg_t args[MECS_QUERY_MAX_LEN];
@@ -146,10 +149,10 @@ typedef struct
 #define MECS_COMPONENT_IDENT(i_type)                            mecs__component_##i_type##_id
 #define MECS_COMPONENT_DECLARE(i_type)                          mecs_component_t MECS_COMPONENT_IDENT(i_type)
 #define MECS_COMPONENT_REGISTER(io_registry, i_type)            MECS_COMPONENT_IDENT(i_type) = mecs_component_register_impl((io_registry), #i_type, sizeof(i_type), mecs_alignof(i_type) )
-#define mecs_component_add(io_registry, i_entity, i_type)       (i_type*)mecs_component_add_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
+#define mecs_component_add(io_registry, i_entity, i_type)       ((i_type*)mecs_component_add_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type)))
 #define mecs_component_remove(io_registry, i_entity, i_type)    mecs_component_remove_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
 #define mecs_component_has(i_registry, i_entity, i_type)        mecs_component_has_impl((i_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
-#define mecs_component_get(io_registry, i_entity, i_type)       (i_type*)mecs_component_get_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
+#define mecs_component_get(io_registry, i_entity, i_type)       ((i_type*)mecs_component_get_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type)))
 
 mecs_component_t        mecs_component_register_impl(mecs_registry_t* io_registry, char const* name, size_t size, size_t alignment);
 void*                   mecs_component_add_impl(mecs_registry_t* io_registry, mecs_entity_t i_entity, mecs_component_t i_component);
@@ -162,6 +165,7 @@ mecs_dense_t*           mecs_component_get_dense_element(mecs_component_store_t*
 void*                   mecs_component_get_component_element(mecs_component_store_t* i_component_store, mecs_entity_size_t i_index);
 mecs_dense_t*           mecs_component_get_last_dense_element(mecs_component_store_t* i_component_store);
 void*                   mecs_component_get_last_component_element(mecs_component_store_t* i_component_store);
+mecs_bool_t             mecs_component_has_sparse_element(mecs_component_store_t const* i_component_store, mecs_entity_t i_entity);
 mecs_sparse_t*          mecs_component_add_sparse_element(mecs_component_store_t* i_component_store, mecs_entity_t i_entity);
 void*                   mecs_component_add_dense_element(mecs_component_store_t* i_component_store);
 
@@ -175,16 +179,21 @@ mecs_bool_t             mecs_entity_is_destroyed(mecs_registry_t* io_registry, m
 mecs_registry_t*        mecs_registry_create(size_t i_component_count_reserve);
 void                    mecs_registry_destroy(mecs_registry_t* io_registry);
 
-#define mecs_query_with(io_query_it, i_type)       mecs_query_with_impl((io_query_it), MECS_COMPONENT_IDENT(i_type))
-#define mecs_query_without(io_query_it, i_type)    mecs_query_without_impl((io_query_it), MECS_COMPONENT_IDENT(i_type))
+#define mecs_query_with(io_query_it, i_type)                    mecs_query_with_impl((io_query_it), MECS_COMPONENT_IDENT(i_type))
+#define mecs_query_without(io_query_it, i_type)                 mecs_query_without_impl((io_query_it), MECS_COMPONENT_IDENT(i_type))
+#define mecs_query_optional(io_query_it, i_type)                mecs_query_optional_impl((io_query_it), MECS_COMPONENT_IDENT(i_type))
+#define mecs_query_component_has(io_query_it, i_type, i_index)  mecs_query_component_has_impl((io_query_it), MECS_COMPONENT_IDENT(i_type), i_index)
+#define mecs_query_component_get(io_query_it, i_type, i_index)  ((i_type*)mecs_query_component_get_impl((io_query_it), MECS_COMPONENT_IDENT(i_type), i_index))
 
 mecs_query_it_t         mecs_query_create();
 void                    mecs_query_with_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component);
 void                    mecs_query_without_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component);
+void                    mecs_query_optional_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component);
 void                    mecs_query_begin(mecs_registry_t* io_registry, mecs_query_it_t* io_query_it);
 mecs_bool_t             mecs_query_next(mecs_query_it_t* io_query_it);
 mecs_entity_t           mecs_query_entity_get(mecs_query_it_t* io_query_it);
-void*                   mecs_query_component_get(mecs_query_it_t* io_query_it, mecs_component_t i_component);
+mecs_bool_t             mecs_query_component_has_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component, size_t i_index);
+void*                   mecs_query_component_get_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component, size_t i_index);
 
 
 
@@ -381,30 +390,8 @@ void mecs_component_remove_impl(mecs_registry_t* io_registry, mecs_entity_t i_en
 
 mecs_bool_t mecs_component_has_impl(mecs_registry_t const* i_registry, mecs_entity_t i_entity, mecs_component_t i_component)
 {
-    mecs_component_store_t const* component_store; 
-    mecs_entity_size_t page_index;
-    mecs_entity_size_t page_offset;
-    mecs_sparse_t sparse_elem;
     mecs_assert(i_registry != NULL);
-
-    component_store = &i_registry->components[i_component];
-
-    page_index = mecs_entity_get_id(i_entity) / MECS_PAGE_LEN_SPARSE;
-    if (page_index >= component_store->sparse_len)
-    {
-        return MECS_FALSE;
-    }
-
-    /* If there is no entity sparse_elem will have MECS_ENTITY_GENERATION_INVALID, else make sure the entity stored here has the same generation. 
-       Prevents accessing the dense array to check. */ 
-    page_offset = mecs_entity_get_id(i_entity) % MECS_PAGE_LEN_SPARSE;
-    sparse_elem = component_store->sparse[page_index]->block[page_offset];
-    if (mecs_entity_get_generation(sparse_elem) != mecs_entity_get_generation(i_entity)) 
-    {
-        return MECS_FALSE;
-    }
-
-    return MECS_TRUE;
+    return mecs_component_has_sparse_element(&i_registry->components[i_component], i_entity);
 }
 
 void* mecs_component_get_impl(mecs_registry_t* io_registry, mecs_entity_t i_entity, mecs_component_t i_component)
@@ -470,6 +457,31 @@ void* mecs_component_get_last_component_element(mecs_component_store_t* i_compon
     component_page = i_component_store->components[page_index];
     component = (void*)(((char*)component_page) + (page_offset * i_component_store->size));
     return component;
+}
+
+mecs_bool_t mecs_component_has_sparse_element(mecs_component_store_t const* i_component_store, mecs_entity_t i_entity)
+{
+    mecs_entity_size_t page_index;
+    mecs_entity_size_t page_offset;
+    mecs_sparse_t sparse_elem;
+    mecs_assert(i_component_store != NULL);
+
+    page_index = mecs_entity_get_id(i_entity) / MECS_PAGE_LEN_SPARSE;
+    if (page_index >= i_component_store->sparse_len)
+    {
+        return MECS_FALSE;
+    }
+
+    /* If there is no entity sparse_elem will have MECS_ENTITY_GENERATION_INVALID, else make sure the entity stored here has the same generation. 
+       Prevents accessing the dense array to check. */ 
+    page_offset = mecs_entity_get_id(i_entity) % MECS_PAGE_LEN_SPARSE;
+    sparse_elem = i_component_store->sparse[page_index]->block[page_offset];
+    if (mecs_entity_get_generation(sparse_elem) != mecs_entity_get_generation(i_entity)) 
+    {
+        return MECS_FALSE;
+    }
+
+    return MECS_TRUE;
 }
 
 mecs_sparse_t* mecs_component_add_sparse_element(mecs_component_store_t* i_component_store, mecs_entity_t i_entity)
@@ -689,7 +701,7 @@ mecs_query_it_t mecs_query_create()
     mecs_query_it_t query;
     query.current = NULL;
     query.end = NULL;
-    query.base_arg_idx = (size_t)-1;
+    query.component_stores = NULL;
     query.args_len = 0;
     return query;
 }
@@ -712,6 +724,15 @@ void mecs_query_without_impl(mecs_query_it_t* io_query_it, mecs_component_t i_co
     io_query_it->args_len += 1;
 }
 
+void mecs_query_optional_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component)
+{
+    mecs_assert(io_query_it != NULL);
+    mecs_assert(io_query_it->args_len != MECS_QUERY_MAX_LEN);
+    io_query_it->args[io_query_it->args_len].type = MECS_QUERY_TYPE_OPTIONAL;
+    io_query_it->args[io_query_it->args_len].component = i_component;
+    io_query_it->args_len += 1;
+}
+
 void mecs_query_begin(mecs_registry_t* io_registry, mecs_query_it_t* io_query_it)
 {
     size_t arg_idx;
@@ -721,32 +742,29 @@ void mecs_query_begin(mecs_registry_t* io_registry, mecs_query_it_t* io_query_it
 
     mecs_entity_size_t smallest_entities_count;
     mecs_component_store_t* smallest_component_store;
-    size_t smallest_query_arg;
     mecs_assert(io_registry != NULL);
     mecs_assert(io_query_it != NULL);
 
     /* Find the component store with the smallest number of entities to become the iterator base. */
     smallest_entities_count = (mecs_entity_size_t)-1;
     smallest_component_store = NULL;
-    smallest_query_arg = (size_t)-1;
     for (arg_idx = 0; arg_idx < io_query_it->args_len; ++arg_idx)
     {
-        /* Only with or without query arguments can form the base for the iterator as they are the only type that narrows down the set entities we have it iterate to a single array. */
+        /* Only with query arguments can form the base for the iterator as they are the only type that narrows down the set entities we have it iterate to a single array. */
         type = io_query_it->args[arg_idx].type;
         component = io_query_it->args[arg_idx].component;
-        if (type == MECS_QUERY_TYPE_WITH || type == MECS_QUERY_TYPE_WITHOUT)
+        if (type == MECS_QUERY_TYPE_WITH)
         {
             entities_count = io_registry->components[component].entities_count;
             if (entities_count < smallest_entities_count)
             {
                 smallest_entities_count = entities_count;
                 smallest_component_store = &io_registry->components[component];
-                smallest_query_arg = arg_idx;
             }
         }
     }
 
-    if (smallest_query_arg == (size_t)-1)
+    if (smallest_component_store == NULL)
     {
         /* This query matches all entities. We need at least 1 query arg to form the base of iteration. */
         mecs_assert(MECS_FALSE);
@@ -755,8 +773,7 @@ void mecs_query_begin(mecs_registry_t* io_registry, mecs_query_it_t* io_query_it
 
     io_query_it->current = smallest_component_store->dense;
     io_query_it->end = smallest_component_store->dense + smallest_component_store->entities_count;
-    io_query_it->base_arg_idx = smallest_query_arg;
-    io_query_it->registry = io_registry;
+    io_query_it->component_stores = io_registry->components;
 }
 
 mecs_bool_t mecs_query_next(mecs_query_it_t* io_query_it)
@@ -764,31 +781,35 @@ mecs_bool_t mecs_query_next(mecs_query_it_t* io_query_it)
     size_t arg_idx;
     mecs_query_type_t type;
     mecs_component_t component;
+    mecs_component_store_t* component_store;
     mecs_bool_t has_component;
 
     while(io_query_it->current < io_query_it->end)
     {
         for (arg_idx = 0; arg_idx < io_query_it->args_len; ++arg_idx)
         {
-            if (arg_idx == io_query_it->base_arg_idx)
-            {
-                /* This query argument forms the base of the iteration and is therefore guaranteed to match. */
-                continue;
-            }
-
             /* Check if the entity matches the query argument. */
             type = io_query_it->args[arg_idx].type;
             component = io_query_it->args[arg_idx].component;
-            has_component = mecs_component_has_impl(io_query_it->registry, *io_query_it->current, component);
-            if(type == MECS_QUERY_TYPE_WITH && has_component)
+            component_store = &io_query_it->component_stores[component];
+            has_component = mecs_component_has_sparse_element(component_store, *io_query_it->current);
+
+            if (has_component)
             {
-                continue;
+                io_query_it->sparse_elements[arg_idx] = *mecs_component_get_sparse_element(component_store, *io_query_it->current);
             }
-            else if(type == MECS_QUERY_TYPE_WITHOUT && !has_component)
+            else
             {
-                continue;
+                io_query_it->sparse_elements[arg_idx] = MECS_SPARSE_INVALID;
             }
 
+            if((type == MECS_QUERY_TYPE_WITH && has_component) ||
+               (type == MECS_QUERY_TYPE_WITHOUT && !has_component) ||
+               (type == MECS_QUERY_TYPE_OPTIONAL)
+            )
+            {
+                continue;
+            }
             goto l_next_entity; /* Query arg does not match the current entity. Move on to the next entity. */ 
         }
 
@@ -801,11 +822,22 @@ mecs_bool_t mecs_query_next(mecs_query_it_t* io_query_it)
     return MECS_FALSE;
 }
 
-/*
-TODO: Implement...
-mecs_entity_t           mecs_query_entity_get(mecs_query_it_t* io_query_it);
-void*                   mecs_query_component_get(mecs_query_it_t* io_query_it, mecs_component_t i_component);
-*/
+mecs_entity_t mecs_query_entity_get(mecs_query_it_t* io_query_it)
+{
+    return *(io_query_it->current - 1);
+}
+
+mecs_bool_t mecs_query_component_has_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component, size_t i_index)
+{
+    mecs_assert(io_query_it->args[i_index].component == i_component);
+    return io_query_it->sparse_elements[i_index] != MECS_SPARSE_INVALID;
+}
+
+void* mecs_query_component_get_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component, size_t i_index)
+{
+    mecs_assert(io_query_it->args[i_index].component == i_component);
+    return mecs_component_get_component_element(&io_query_it->component_stores[i_component], mecs_entity_get_id(io_query_it->sparse_elements[i_index]));
+}
 
 #endif /* MECS_IMPLEMENTATION */
 #endif /* MECS_H */
