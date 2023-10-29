@@ -1,0 +1,285 @@
+#define MECS_IMPLEMENTATION 
+#include "../mecs.h"
+
+#include <stdint.h>
+#include <stdio.h>
+
+#define STRINGIFY(v) #v
+#define test(i_condition) if (!(i_condition)) { printf("Test line %d failed: %s\n", __LINE__, STRINGIFY(i_condition)); assert(0); }
+#define test_str(i_value, i_expected) if (strcmp((i_value), (i_expected)) == 1) { printf("Test line %d failed. Expected: %s, Got: %s\n", __LINE__, (i_expected), (i_value)); assert(0); }
+#define test_uint(i_value, i_expected) if ((i_value) != (i_expected)) { printf("Test line %d failed. Expected: %zu, Got: %zu\n", __LINE__, (size_t)(i_expected), (size_t)(i_value)); assert(0); }
+
+typedef struct {
+   uint32_t v; 
+} test_comp_4;
+
+typedef struct {
+   uint64_t v; 
+} test_comp_8;
+
+MECS_COMPONENT_DECLARE(test_comp_4);
+MECS_COMPONENT_DECLARE(test_comp_8);
+
+void test_registry_create(void) 
+{
+    mecs_registry_t* registry;
+
+    registry = mecs_registry_create(4);
+    MECS_COMPONENT_REGISTER(registry, test_comp_4);
+    MECS_COMPONENT_REGISTER(registry, test_comp_8);
+
+    test_uint(registry->components_len, 2);
+    test_uint(registry->components_cap, 4);
+
+    test_str(registry->components[0].name, "test_comp_4");
+    test_uint(registry->components[0].size, 4);
+    test_uint(registry->components[0].alignment, 4);
+
+    test_str(registry->components[1].name, "test_comp_8");
+    test_uint(registry->components[1].size, 8);
+    test_uint(registry->components[1].alignment, 8);
+
+    mecs_registry_destroy(registry);
+    
+    registry = mecs_registry_create(0);
+    MECS_COMPONENT_REGISTER(registry, test_comp_4);
+    MECS_COMPONENT_REGISTER(registry, test_comp_8);
+
+    test_uint(registry->components_len, 2);
+    test_uint(registry->components_cap, 2);
+
+    test_str(registry->components[0].name, "test_comp_4");
+    test_uint(registry->components[0].size, 4);
+    test_uint(registry->components[0].alignment, 4);
+
+    test_str(registry->components[1].name, "test_comp_8");
+    test_uint(registry->components[1].size, 8);
+    test_uint(registry->components[1].alignment, 8);
+
+    mecs_registry_destroy(registry);
+}
+
+void test_entity_recycle(void) 
+{
+    mecs_registry_t* registry;
+    mecs_entity_t entity0, entity1, entity2, entity3; 
+
+    registry = mecs_registry_create(0);
+    entity0 = mecs_entity_create(registry);
+    entity1 = mecs_entity_create(registry);
+    entity2 = mecs_entity_create(registry);
+    entity3 = mecs_entity_create(registry);
+    (void)entity3;
+
+    mecs_entity_destroy(registry, entity2);
+    mecs_entity_destroy(registry, entity1);
+    mecs_entity_destroy(registry, entity0);
+    entity0 = mecs_entity_create(registry);
+    entity1 = mecs_entity_create(registry);
+    entity2 = mecs_entity_create(registry);
+
+    mecs_entity_destroy(registry, entity1);
+    mecs_entity_destroy(registry, entity0);
+    entity0 = mecs_entity_create(registry);
+    entity1 = mecs_entity_create(registry);
+
+    mecs_entity_destroy(registry, entity0);
+    entity0 = mecs_entity_create(registry);
+
+    test_uint(registry->entities_len, 4);
+    test_uint(registry->entities_cap, 8);
+    test_uint(mecs_entity_get_id(registry->entities[0]), 0);
+    test_uint(mecs_entity_get_id(registry->entities[1]), 1);
+    test_uint(mecs_entity_get_id(registry->entities[2]), 2);
+    test_uint(mecs_entity_get_id(registry->entities[3]), 3);
+    test_uint(mecs_entity_get_generation(registry->entities[0]), 3);
+    test_uint(mecs_entity_get_generation(registry->entities[1]), 2);
+    test_uint(mecs_entity_get_generation(registry->entities[2]), 1);
+    test_uint(mecs_entity_get_generation(registry->entities[3]), 0);
+    
+    mecs_registry_destroy(registry);
+}
+
+void test_add_component(void)
+{
+    mecs_registry_t* registry;
+
+    registry = mecs_registry_create(2);
+    MECS_COMPONENT_REGISTER(registry, test_comp_4);
+    MECS_COMPONENT_REGISTER(registry, test_comp_8);
+
+    /* TODO: test */
+
+    mecs_registry_destroy(registry);
+}
+
+void test_has_component(void)
+{
+    mecs_registry_t* registry;
+    mecs_entity_t entity0, entity1; 
+
+    registry = mecs_registry_create(2);
+    MECS_COMPONENT_REGISTER(registry, test_comp_4);
+    MECS_COMPONENT_REGISTER(registry, test_comp_8);
+
+    entity0 = mecs_entity_create(registry);
+    mecs_component_add(registry, entity0, test_comp_4);
+    test_uint(mecs_component_has(registry, entity0, test_comp_4), MECS_TRUE);
+    test_uint(mecs_component_has(registry, entity0, test_comp_8), MECS_FALSE);
+
+    mecs_entity_destroy(registry, entity0);
+    test_uint(mecs_component_has(registry, entity0, test_comp_4), MECS_FALSE);
+    test_uint(mecs_component_has(registry, entity0, test_comp_8), MECS_FALSE);
+
+    entity1 = mecs_entity_create(registry);
+    mecs_component_add(registry, entity1, test_comp_4);
+    test_uint(mecs_component_has(registry, entity0, test_comp_4), MECS_FALSE);
+    test_uint(mecs_component_has(registry, entity0, test_comp_8), MECS_FALSE);
+    test_uint(mecs_component_has(registry, entity1, test_comp_4), MECS_TRUE);
+    test_uint(mecs_component_has(registry, entity1, test_comp_8), MECS_FALSE);
+
+    mecs_registry_destroy(registry);
+}
+
+void test_query(void)
+{
+    mecs_registry_t* registry;
+    mecs_entity_t entity0, entity1; 
+    mecs_query_it_t query0, query1, query2;
+    size_t query0_count, query1_count, query2_count;
+
+    registry = mecs_registry_create(2);
+    MECS_COMPONENT_REGISTER(registry, test_comp_4);
+    MECS_COMPONENT_REGISTER(registry, test_comp_8);
+
+    entity0 = mecs_entity_create(registry);
+    mecs_component_add(registry, entity0, test_comp_4);
+    mecs_component_add(registry, entity0, test_comp_8);
+
+    entity1 = mecs_entity_create(registry);
+    mecs_component_add(registry, entity1, test_comp_4);
+
+    query0 = mecs_query_create();
+    mecs_query_with(&query0, test_comp_4);
+    mecs_query_with(&query0, test_comp_8);
+    query0_count = 0;
+    for(mecs_query_begin(registry, &query0); mecs_query_next(&query0);)
+    {
+        query0_count += 1;
+    }
+    test_uint(query0_count, 1);
+
+    query1 = mecs_query_create();
+    mecs_query_with(&query1, test_comp_4);
+    query1_count = 0;
+    for(mecs_query_begin(registry, &query1); mecs_query_next(&query1);)
+    {
+        query1_count += 1;
+    }
+    test_uint(query1_count, 2);
+
+    query2 = mecs_query_create();
+    mecs_query_with(&query2, test_comp_4);
+    mecs_query_with(&query2, test_comp_8);
+    query2_count = 0;
+    for(mecs_query_begin(registry, &query2); mecs_query_next(&query2);)
+    {
+        query2_count += 1;
+    }
+    test_uint(query2_count, 1);
+
+    mecs_registry_destroy(registry);
+}
+
+/* TODO: Scratch test space. Remove... */
+
+typedef struct {
+    int x;
+    int y;
+} Position;
+
+typedef struct {
+    int velocity_x;
+    int velocity_y;
+    int acceleration_x;
+    int acceleration_y;
+    size_t mass;
+} Physics;
+
+typedef struct {
+    char r, g, b;
+} Colour;
+
+MECS_COMPONENT_DECLARE(Position);
+MECS_COMPONENT_DECLARE(Physics);
+MECS_COMPONENT_DECLARE(Colour);
+
+int main(void) {
+    mecs_registry_t* registry;
+    size_t i;
+    mecs_entity_t entity0, entity1, entity2, entity3; 
+    Position* position0;
+    Position* position2; 
+
+    test_registry_create();
+    test_entity_recycle();
+    test_has_component();
+    test_query();
+
+    registry = mecs_registry_create(1);
+    MECS_COMPONENT_REGISTER(registry, Position);
+    MECS_COMPONENT_REGISTER(registry, Physics);
+    MECS_COMPONENT_REGISTER(registry, Colour);
+
+    entity0 = mecs_entity_create(registry);
+    entity1 = mecs_entity_create(registry);
+    entity2 = mecs_entity_create(registry);
+    entity3 = mecs_entity_create(registry);
+    mecs_entity_destroy(registry, entity1);
+    mecs_entity_destroy(registry, entity2);
+    mecs_entity_destroy(registry, entity3);
+    
+    (void)entity0; 
+    (void)entity1; 
+    (void)entity2; 
+    (void)entity3; 
+    
+    position0 = mecs_component_add(registry, entity0, Position);
+    position2 = mecs_component_add(registry, entity2, Position);
+    position0->x = 1;
+    position0->y = 2;
+    position2->x = 3;
+    position2->y = 4;
+
+    if (mecs_component_has(registry, entity0, Position))
+    {
+        position0 = mecs_component_get(registry, entity0, Position);
+        position0->x = 10;
+        position0->y = 20;
+        mecs_component_remove(registry, entity0, Position);
+    }
+    if (mecs_component_has(registry, entity2, Position))
+    {
+        position2 = mecs_component_get(registry, entity2, Position);
+        position2->x = 30;
+        position2->y = 40;
+        mecs_component_remove(registry, entity2, Position);
+    }
+
+    for (i = 0; i < registry->components_len; ++i)
+    {
+        printf("Size: %3zu, Alignment: %3zu, Name: %s\n", registry->components[i].size, registry->components[i].alignment, registry->components[i].name);
+    }
+    printf("\n");
+
+    for (i = 0; i < registry->entities_len; ++i)
+    {
+        printf("Entity ID: %5u, Generation: %3u\n", mecs_entity_get_id(registry->entities[i]), mecs_entity_get_generation(registry->entities[i]));
+    }
+    printf("Next free entity: %u\n", mecs_entity_get_id(registry->next_free_entity));
+    printf("\n");
+
+    mecs_registry_destroy(registry);
+    printf("Shutdown");
+    return 0;
+}
