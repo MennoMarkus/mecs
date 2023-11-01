@@ -9,16 +9,38 @@
 #define test_str(i_value, i_expected) if (strcmp((i_value), (i_expected)) == 1) { printf("Test line %d failed. Expected: %s, Got: %s\n", __LINE__, (i_expected), (i_value)); assert(0); }
 #define test_uint(i_value, i_expected) if ((i_value) != (i_expected)) { printf("Test line %d failed. Expected: %zu, Got: %zu\n", __LINE__, (size_t)(i_expected), (size_t)(i_value)); assert(0); }
 
-typedef struct {
+typedef struct 
+{
    uint32_t v; 
 } test_comp_4;
 
-typedef struct {
+typedef struct 
+{
    uint64_t v; 
 } test_comp_8;
 
+#if defined(__cplusplus)
+class test_comp_cpp 
+{
+public:
+    test_comp_cpp() : 
+        v(99) 
+    {}
+
+    ~test_comp_cpp() 
+    { 
+        v = 11;
+    }
+
+    uint64_t v;
+};
+#endif
+
 MECS_COMPONENT_DECLARE(test_comp_4);
 MECS_COMPONENT_DECLARE(test_comp_8);
+#if defined(__cplusplus)
+MECS_COMPONENT_DECLARE(test_comp_cpp);
+#endif
 
 void test_registry_create(void) 
 {
@@ -220,6 +242,33 @@ void test_query(void)
     mecs_registry_destroy(registry);
 }
 
+#if defined(__cplusplus)
+void test_constructor(void) 
+{
+    mecs_registry_t* registry = mecs_registry_create(1);
+    MECS_COMPONENT_REGISTER(registry, test_comp_cpp);
+
+    mecs_entity_t entity0 = mecs_entity_create(registry);
+    mecs_entity_t entity1 = mecs_entity_create(registry);
+
+    test_comp_cpp* comp0 = mecs_component_add(registry, entity0, test_comp_cpp);
+    test_comp_cpp* comp1 = mecs_component_add(registry, entity1, test_comp_cpp);
+    test_uint(comp0->v, 99);
+    test_uint(comp1->v, 99);
+    comp1->v = 88;
+
+    mecs_entity_destroy(registry, entity0);
+    test_uint(comp0->v, 88);
+    test_uint(comp1->v, 11);
+
+    mecs_entity_destroy(registry, entity1);
+    test_uint(comp0->v, 11);
+    test_uint(comp1->v, 11);
+
+    mecs_registry_destroy(registry);
+}
+#endif
+
 /* TODO: Scratch test space. Remove... */
 
 typedef struct {
@@ -254,6 +303,9 @@ int main(void) {
     test_entity_recycle();
     test_has_component();
     test_query();
+    #if defined(__cplusplus)
+        test_constructor();
+    #endif
 
     registry = mecs_registry_create(1);
     MECS_COMPONENT_REGISTER(registry, Position);

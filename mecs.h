@@ -116,6 +116,36 @@ typedef mecs_entity_t mecs_dense_t;
 #define MECS_PAGE_LEN_SPARSE (4096 / sizeof(mecs_sparse_t)) /* Default chosen to equal as many entities as fit in the common page size (4kb). */
 #define MECS_PAGE_LEN_DENSE 512
 
+/* Hooks into the lifetime of a component. In C++ we automatically register the constructor and destructor. */
+typedef void(*mecs_ctor_func_t)(void* io_data);
+typedef void(*mecs_dtor_func_t)(void* io_data);
+typedef void(*mecs_move_and_dtor_func_t)(void* io_src_to_move, void* io_dst_to_destruct);
+
+#if defined(__cplusplus)
+    #include <new>
+
+    template <typename T>
+    void mecs_ctor_cpp_impl(void* io_data)
+    {
+        ::new(io_data) T;
+    }
+
+    template <typename T>
+    void mecs_dtor_cpp_impl(void* io_data)
+    {
+        ((T*)io_data)->~T();
+    }
+
+    template <typename T>
+    void mecs_move_and_dtor_cpp_impl(void* io_src_to_move, void* io_dst_to_destruct)
+    {
+        T* dst = (T*)io_dst_to_destruct; 
+        T* src = (T*)io_src_to_move; 
+        *dst = static_cast<T&&>(*src);
+        src->~T();
+    }
+#endif
+
 typedef struct
 { 
     mecs_sparse_t block[MECS_PAGE_LEN_SPARSE]; 
@@ -127,8 +157,9 @@ typedef struct
     size_t size;
     size_t alignment;
     
-    void* ctor;
-    void* dtor;
+    mecs_ctor_func_t ctor_func;
+    mecs_dtor_func_t dtor_func;
+    mecs_move_and_dtor_func_t move_and_dtor_func;
 
     /* Sparse-set mapping entity id to components. 
        Example:
@@ -199,13 +230,18 @@ typedef struct
 
 #define MECS_COMPONENT_IDENT(i_type)                            mecs__component_##i_type##_id
 #define MECS_COMPONENT_DECLARE(i_type)                          mecs_component_t MECS_COMPONENT_IDENT(i_type)
-#define MECS_COMPONENT_REGISTER(io_registry, i_type)            MECS_COMPONENT_IDENT(i_type) = mecs_component_register_impl((io_registry), #i_type, sizeof(i_type), mecs_alignof(i_type) )
+#if defined(__cplusplus)
+    #define MECS_COMPONENT_REGISTER(io_registry, i_type)        MECS_COMPONENT_IDENT(i_type) = mecs_component_register_impl((io_registry), #i_type, sizeof(i_type), mecs_alignof(i_type), &mecs_ctor_cpp_impl<i_type>, &mecs_dtor_cpp_impl<i_type>, &mecs_move_and_dtor_cpp_impl<i_type> )
+#else
+    #define MECS_COMPONENT_REGISTER(io_registry, i_type)        MECS_COMPONENT_IDENT(i_type) = mecs_component_register_impl((io_registry), #i_type, sizeof(i_type), mecs_alignof(i_type), NULL, NULL, NULL )
+#endif
+
 #define mecs_component_add(io_registry, i_entity, i_type)       ((i_type*)mecs_component_add_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type)))
 #define mecs_component_remove(io_registry, i_entity, i_type)    mecs_component_remove_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
 #define mecs_component_has(i_registry, i_entity, i_type)        mecs_component_has_impl((i_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
 #define mecs_component_get(io_registry, i_entity, i_type)       ((i_type*)mecs_component_get_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type)))
 
-mecs_component_t        mecs_component_register_impl(mecs_registry_t* io_registry, char const* name, size_t size, size_t alignment);
+mecs_component_t        mecs_component_register_impl(mecs_registry_t* io_registry, char const* name, size_t size, size_t alignment, mecs_ctor_func_t i_ctor, mecs_dtor_func_t i_dtor, mecs_move_and_dtor_func_t i_move_and_dtor);
 void*                   mecs_component_add_impl(mecs_registry_t* io_registry, mecs_entity_t i_entity, mecs_component_t i_component);
 void                    mecs_component_remove_impl(mecs_registry_t* io_registry, mecs_entity_t i_entity, mecs_component_t i_component);
 mecs_bool_t             mecs_component_has_impl(mecs_registry_t const* i_registry, mecs_entity_t i_entity, mecs_component_t i_component);
@@ -339,7 +375,7 @@ void mecs_registry_destroy(mecs_registry_t* io_registry)
     mecs_free(io_registry);
 }
 
-mecs_component_t mecs_component_register_impl(mecs_registry_t* io_registry, char const* name, size_t size, size_t alignment) 
+mecs_component_t mecs_component_register_impl(mecs_registry_t* io_registry, char const* i_name, size_t i_size, size_t i_alignment, mecs_ctor_func_t i_ctor, mecs_dtor_func_t i_dtor, mecs_move_and_dtor_func_t i_move_and_dtor) 
 {
     mecs_component_store_t* components_grown;
     size_t new_capacity;
@@ -368,9 +404,12 @@ mecs_component_t mecs_component_register_impl(mecs_registry_t* io_registry, char
         return component; /* Already registered. */
     }
 
-    io_registry->components[component].name = name;
-    io_registry->components[component].size = size;
-    io_registry->components[component].alignment = alignment;
+    io_registry->components[component].name = i_name;
+    io_registry->components[component].size = i_size;
+    io_registry->components[component].alignment = i_alignment;
+    io_registry->components[component].ctor_func = i_ctor;
+    io_registry->components[component].dtor_func = i_dtor;
+    io_registry->components[component].move_and_dtor_func = i_move_and_dtor;
 
     io_registry->components[component].sparse = NULL;
     io_registry->components[component].sparse_len = 0;
@@ -395,6 +434,11 @@ void* mecs_component_add_impl(mecs_registry_t* io_registry, mecs_entity_t i_enti
     sparse_elem = mecs_component_add_sparse_element(component_store, i_entity);
     component_elem = mecs_component_add_dense_element(component_store); /* Allocating a new dense elements will grow both the components array and dense array to match. */
     dense_elem = mecs_component_get_last_dense_element(component_store);
+
+    if (component_store->ctor_func != NULL)
+    {
+        component_store->ctor_func(component_elem);
+    }
     
     *sparse_elem = mecs_entity_compose(mecs_entity_get_generation(i_entity), component_store->entities_count - 1); /* Build sparse element out of version and dense index. */
     *dense_elem  = i_entity;
@@ -429,9 +473,24 @@ void mecs_component_remove_impl(mecs_registry_t* io_registry, mecs_entity_t i_en
         last_entity_sparse_elem = mecs_component_get_sparse_element(component_store, *last_entity_dense_elem);
         last_entity_component_elem = mecs_component_get_last_component_element(component_store);
 
-        memcpy(entity_component_elem, last_entity_component_elem, component_store->size);
+        if (component_store->move_and_dtor_func != NULL)
+        {
+            component_store->move_and_dtor_func(last_entity_component_elem, entity_component_elem);
+        }
+        else
+        {
+            memcpy(entity_component_elem, last_entity_component_elem, component_store->size);
+        }
+
         *entity_dense_elem = *last_entity_dense_elem;
         *last_entity_sparse_elem = mecs_entity_compose(mecs_entity_get_generation(*last_entity_sparse_elem), entity_dense_index); /* Override the new dense index of the last entity. */
+    }
+    else 
+    {
+        if (component_store->dtor_func != NULL)
+        {
+            component_store->dtor_func(entity_component_elem);
+        }
     }
 
     /* Destroy the entry associated with this entity. */
