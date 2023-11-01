@@ -35,8 +35,9 @@ REM 2) Set the language version
 REM /Za                     - disable language extensions not compatible with C89/C90
 REM /Tc                     - enforces compilation with C
 REM /std:c++14              - set C++ version to C++14 (as of writing minimum supported version for the current toolset)
+REM /Tp                     - enforces compilation with C++
 if %languageVersion% == "c" set opts=%opts% /Za /Tc 
-if %languageVersion% == "cpp" set opts=%opts% /std:c++14 
+if %languageVersion% == "cpp" set opts=%opts% /std:c++14 /Tp
 
 REM 3) Create output directories
 if not exist output mkdir output
