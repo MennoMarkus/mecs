@@ -32,7 +32,7 @@ typedef char mecs_bool_t;
 #define mecs_memset(i_ptr, i_value, i_size)     memset((i_ptr), (i_value), (i_size))
 
 #if !defined(mecs_alignof)
-    #if defined(__cplusplus)
+    #if defined (__cplusplus)
         /* Portable alignment implementation by Martin Buchholz ( https://wambold.com/Martin/writings/alignof.html ) */
         /* 1) Attempt to find the alignment by rounding to the nearest power of 2. */
         namespace mecs_alignof_nearest_power_of_two {
