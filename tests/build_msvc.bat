@@ -1,19 +1,20 @@
 @echo off
 
-REM usage: build.bat [config]
+REM usage: build.bat [config] [languageVersion]
 REM config - { debug, release, preprocessor }, default=debug
+REM languageVersion - { c, cpp }, default=c
 
 REM 1) Setup configuration
 set config=%1
+set languageVersion=%2
 if "%config%" == "" set config="debug"
+if "%languageVersion%" == "" set languageVersion="c"
 set rootFolder=%cd%
 set source=%cd%/main.c
 set libs=ws2_32.lib
 set outputName=%cd%/output/main_msvc.exe
 
 REM /nologo                 - suppress startup banner
-REM /Za                     - disable language extensions not compatible with C89/C90
-REM /Tc                     - enforces compilation with C
 REM /Od                     - disable optimisations
 REM /O2                     - full optimisations
 REM /Zi                     - generate seprate pdb file
@@ -22,20 +23,27 @@ REM /WX                     - threat warnings as errors
 REM /OPT:REF                - remove functions which are never referenced
 REM /SUBSYSTEM:CONSOLE      - executable is console application
 REM /P                      - output the preprocessor result to a file 
-set debugOpts=/nologo /Od /W4 /WX /Zi /Za /Tc
-set releaseOpts=/nologo /O2 /W4 /WX /Za /Tc 
+set debugOpts=/nologo /Od /W4 /WX /Zi 
+set releaseOpts=/nologo /O2 /W4 /WX 
 set linkOpts=/OPT:REF /SUBSYSTEM:CONSOLE
 
 set opts=%debugOpts%
 if %config% == "preprocessor" set opts=/P %debugOpts%
 if %config% == "release" set opts=%releaseOpts%
 
-REM 2) Create output directories
+REM 2) Set the language version
+REM /Za                     - disable language extensions not compatible with C89/C90
+REM /Tc                     - enforces compilation with C
+REM /std:c++14              - set C++ version to C++14 (as of writing minimum supported version for the current toolset)
+if %languageVersion% == "c" set opts=%opts% /Za /Tc 
+if %languageVersion% == "cpp" set opts=%opts% /std:c++14 
+
+REM 3) Create output directories
 if not exist output mkdir output
 if not exist build mkdir build
 cd build
 
-REM 3) Setup msvc cl
+REM 4) Setup msvc cl
 
 REM First check if cl has already been setup
 where /q cl
@@ -73,7 +81,7 @@ if not defined LIB (if exist "%VC_PATH%" (call "%VC_PATH%\VC\vcvarsall.bat" %VC_
 
 :compileSetup
 
-REM 4) Compile executable
+REM 5) Compile executable
 call cl %opts% %source% /I"%rootFolder%" /link %linkOpts% %libs% /out:%outputName%
 
 cd ..

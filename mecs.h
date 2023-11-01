@@ -31,18 +31,69 @@ typedef char mecs_bool_t;
 #include <string.h>
 #define mecs_memset(i_ptr, i_value, i_size)     memset((i_ptr), (i_value), (i_size))
 
-#if defined(__cplusplus)
-    #define mecs_alignof(i_type)                static_cast<size_t>(alignof(i_type))
-#elif defined(_MSC_VER)
-    #define mecs_alignof(i_type)                (size_t)__alignof(i_type)
-#elif defined(__GNUC__)
-    #define mecs_alignof(i_type)                (size_t)__alignof__(i_type)
-#else
-    #define mecs_alignof(i_type)                (((size_t)&( (struct{ mecs_uint8_t b; i_type t; }* )0 )->t)
+#if !defined(mecs_alignof)
+    #if defined(__cplusplus)
+        /* Portable alignment implementation by Martin Buchholz ( https://wambold.com/Martin/writings/alignof.html ) */
+        /* 1) Attempt to find the alignment by rounding to the nearest power of 2. */
+        namespace mecs_alignof_nearest_power_of_two {
+            template<typename T>
+            struct alignof_t { 
+                enum { 
+                    size = sizeof (T), 
+                    value = size ^ (size & (size - 1))
+                }; 
+            };
+        }
+        /* 2) Attempt to find the alignment by adding bytes onto the type until the size of the struct doubles. */
+        namespace mecs_alignof_size_doubled {
+            template<typename T> struct alignof_t;
+
+            template<int size_diff>
+            struct helper_t {
+                template<typename T> 
+                struct val_t { enum { value = size_diff }; };
+            };
+
+            template<>
+            struct helper_t<0>
+            {
+                template<typename T> 
+                struct val_t { enum { value = alignof_t<T>::value }; };
+            };
+
+            template<typename T>
+            struct alignof_t
+            {
+                struct type_plus_one_byte_t { T x; char c; };
+                enum { 
+                    diff = sizeof(type_plus_one_byte_t) - sizeof(T), 
+                    value = helper_t<diff>::template val_t<type_plus_one_byte_t>::value 
+                };
+            };
+        }
+        /* Pick the larger of the two reported alignments as neither works in all cases. */
+        template<typename T>
+        struct mecs_alignof_t {
+            enum { 
+                one = mecs_alignof_nearest_power_of_two::alignof_t<T>::value,
+                two = mecs_alignof_size_doubled::alignof_t<T>::value,
+                value = one < two ? one : two
+            };
+        };
+
+        #define mecs_alignof(i_type)                static_cast<size_t>(mecs_alignof_t<i_type>::value)
+    #elif defined(_MSC_VER)
+        #define mecs_alignof(i_type)                (size_t)__alignof(i_type)
+    #elif defined(__GNUC__)
+        #define mecs_alignof(i_type)                (size_t)__alignof__(i_type)
+    #else
+        #define mecs_alignof(i_type)                (((size_t)&( (struct{ mecs_uint8_t b; i_type t; }* )0 )->t)
+    #endif
 #endif
 
 
-/* TODO: Expose defines to user as library options. /
+
+/* TODO: Expose defines to user as library options. */
 
 /* An entity consists out of a generation in the bottom bits and an id in the top bits. 
    Ids may be reused so the generation can be used to check if an entity has been destroyed. */
@@ -185,7 +236,7 @@ void                    mecs_registry_destroy(mecs_registry_t* io_registry);
 #define mecs_query_component_has(io_query_it, i_type, i_index)  mecs_query_component_has_impl((io_query_it), MECS_COMPONENT_IDENT(i_type), i_index)
 #define mecs_query_component_get(io_query_it, i_type, i_index)  ((i_type*)mecs_query_component_get_impl((io_query_it), MECS_COMPONENT_IDENT(i_type), i_index))
 
-mecs_query_it_t         mecs_query_create();
+mecs_query_it_t         mecs_query_create(void);
 void                    mecs_query_with_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component);
 void                    mecs_query_without_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component);
 void                    mecs_query_optional_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component);
@@ -696,7 +747,7 @@ mecs_bool_t mecs_entity_is_destroyed(mecs_registry_t* io_registry, mecs_entity_t
     return MECS_FALSE;
 }
 
-mecs_query_it_t mecs_query_create()
+mecs_query_it_t mecs_query_create(void)
 {
     mecs_query_it_t query;
     query.current = NULL;
