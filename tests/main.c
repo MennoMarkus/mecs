@@ -242,8 +242,55 @@ void test_query(void)
     mecs_registry_destroy(registry);
 }
 
+uint64_t g_test_destructor_count;
+
+void init_test_comp4(void* io_comp)
+{
+    ((test_comp_4*)io_comp)->v = 99;
+}
+
+void destroy_test_comp4(void* io_comp)
+{
+    ((test_comp_4*)io_comp)->v = 11;
+    g_test_destructor_count += 1;
+}
+
+void test_constructor_c(void)
+{
+    mecs_registry_t* registry;
+    mecs_entity_t entity0, entity1;
+    test_comp_4* comp0;
+    test_comp_4* comp1;
+    
+    registry = mecs_registry_create(1);
+    MECS_COMPONENT_REGISTER(registry, test_comp_4);
+    MECS_COMPONENT_REGISTER_CTOR(registry, test_comp_4, &init_test_comp4);
+    MECS_COMPONENT_REGISTER_DTOR(registry, test_comp_4, &destroy_test_comp4);
+    /* MECS_COMPONENT_REGISTER_MOVE_AND_DTOR(registry, test_comp_4, &overide_test_comp4); */
+
+    g_test_destructor_count = 0;
+    entity0 = mecs_entity_create(registry);
+    entity1 = mecs_entity_create(registry);
+
+    comp0 = mecs_component_add(registry, entity0, test_comp_4);
+    comp1 = mecs_component_add(registry, entity1, test_comp_4);
+    test_uint(comp0->v, 99);
+    test_uint(comp1->v, 99);
+    comp1->v = 88;
+
+    mecs_entity_destroy(registry, entity0);
+    test_uint(comp0->v, 88);
+    test_uint(g_test_destructor_count, 1);
+
+    mecs_entity_destroy(registry, entity1);
+    test_uint(comp0->v, 11);
+    test_uint(g_test_destructor_count, 2);
+
+    mecs_registry_destroy(registry);
+}
+
 #if defined(__cplusplus)
-void test_constructor(void) 
+void test_constructor_cpp(void) 
 {
     mecs_registry_t* registry = mecs_registry_create(1);
     MECS_COMPONENT_REGISTER(registry, test_comp_cpp);
@@ -303,8 +350,9 @@ int main(void) {
     test_entity_recycle();
     test_has_component();
     test_query();
+    test_constructor_c();
     #if defined(__cplusplus)
-        test_constructor();
+        test_constructor_cpp();
     #endif
 
     registry = mecs_registry_create(1);

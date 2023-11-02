@@ -228,20 +228,26 @@ typedef struct
 } mecs_query_it_t;
 
 
-#define MECS_COMPONENT_IDENT(i_type)                            mecs__component_##i_type##_id
-#define MECS_COMPONENT_DECLARE(i_type)                          mecs_component_t MECS_COMPONENT_IDENT(i_type)
+#define MECS_COMPONENT_IDENT(i_type)                                                            mecs__component_##i_type##_id
+#define MECS_COMPONENT_DECLARE(i_type)                                                          mecs_component_t MECS_COMPONENT_IDENT(i_type)
 #if defined(__cplusplus)
-    #define MECS_COMPONENT_REGISTER(io_registry, i_type)        MECS_COMPONENT_IDENT(i_type) = mecs_component_register_impl((io_registry), #i_type, sizeof(i_type), mecs_alignof(i_type), &mecs_ctor_cpp_impl<i_type>, &mecs_dtor_cpp_impl<i_type>, &mecs_move_and_dtor_cpp_impl<i_type> )
+    #define MECS_COMPONENT_REGISTER(io_registry, i_type)                                        MECS_COMPONENT_IDENT(i_type) = mecs_component_register_impl((io_registry), #i_type, sizeof(i_type), mecs_alignof(i_type), &mecs_ctor_cpp_impl<i_type>, &mecs_dtor_cpp_impl<i_type>, &mecs_move_and_dtor_cpp_impl<i_type> )
 #else
-    #define MECS_COMPONENT_REGISTER(io_registry, i_type)        MECS_COMPONENT_IDENT(i_type) = mecs_component_register_impl((io_registry), #i_type, sizeof(i_type), mecs_alignof(i_type), NULL, NULL, NULL )
+    #define MECS_COMPONENT_REGISTER(io_registry, i_type)                                        MECS_COMPONENT_IDENT(i_type) = mecs_component_register_impl((io_registry), #i_type, sizeof(i_type), mecs_alignof(i_type), NULL, NULL, NULL )
 #endif
+#define MECS_COMPONENT_REGISTER_CTOR(io_registry, i_type, i_ctor_func_ptr)                      mecs_component_register_ctor_impl((io_registry), MECS_COMPONENT_IDENT(i_type), (i_ctor_func_ptr))
+#define MECS_COMPONENT_REGISTER_DTOR(io_registry, i_type, i_dtor_func_ptr)                      mecs_component_register_dtor_impl((io_registry), MECS_COMPONENT_IDENT(i_type), (i_dtor_func_ptr))
+#define MECS_COMPONENT_REGISTER_MOVE_AND_DTOR(io_registry, i_type, i_move_and_dtor_func_ptr)    mecs_component_register_move_and_dtor_impl((io_registry), MECS_COMPONENT_IDENT(i_type), (i_move_and_dtor_func_ptr))
 
-#define mecs_component_add(io_registry, i_entity, i_type)       ((i_type*)mecs_component_add_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type)))
-#define mecs_component_remove(io_registry, i_entity, i_type)    mecs_component_remove_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
-#define mecs_component_has(i_registry, i_entity, i_type)        mecs_component_has_impl((i_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
-#define mecs_component_get(io_registry, i_entity, i_type)       ((i_type*)mecs_component_get_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type)))
+#define mecs_component_add(io_registry, i_entity, i_type)                                       ((i_type*)mecs_component_add_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type)))
+#define mecs_component_remove(io_registry, i_entity, i_type)                                    mecs_component_remove_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
+#define mecs_component_has(i_registry, i_entity, i_type)                                        mecs_component_has_impl((i_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
+#define mecs_component_get(io_registry, i_entity, i_type)                                       ((i_type*)mecs_component_get_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type)))
 
 mecs_component_t        mecs_component_register_impl(mecs_registry_t* io_registry, char const* name, size_t size, size_t alignment, mecs_ctor_func_t i_ctor, mecs_dtor_func_t i_dtor, mecs_move_and_dtor_func_t i_move_and_dtor);
+void                    mecs_component_register_ctor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_ctor_func_t i_ctor);
+void                    mecs_component_register_dtor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_dtor_func_t i_dtor);
+void                    mecs_component_register_move_and_dtor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_move_and_dtor_func_t i_move_and_dtor);
 void*                   mecs_component_add_impl(mecs_registry_t* io_registry, mecs_entity_t i_entity, mecs_component_t i_component);
 void                    mecs_component_remove_impl(mecs_registry_t* io_registry, mecs_entity_t i_entity, mecs_component_t i_component);
 mecs_bool_t             mecs_component_has_impl(mecs_registry_t const* i_registry, mecs_entity_t i_entity, mecs_component_t i_component);
@@ -421,6 +427,27 @@ mecs_component_t mecs_component_register_impl(mecs_registry_t* io_registry, char
     return component;
 }
 
+void mecs_component_register_ctor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_ctor_func_t i_ctor)
+{
+    mecs_assert(io_registry);
+    mecs_assert(io_registry->components[i_component].ctor_func == NULL);
+    io_registry->components[i_component].ctor_func = i_ctor;
+}
+
+void mecs_component_register_dtor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_dtor_func_t i_dtor)
+{
+    mecs_assert(io_registry);
+    mecs_assert(io_registry->components[i_component].dtor_func == NULL);
+    io_registry->components[i_component].dtor_func = i_dtor;
+}
+
+void mecs_component_register_move_and_dtor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_move_and_dtor_func_t i_move_and_dtor)
+{
+    mecs_assert(io_registry);
+    mecs_assert(io_registry->components[i_component].move_and_dtor_func == NULL);
+    io_registry->components[i_component].move_and_dtor_func = i_move_and_dtor;
+}
+
 void* mecs_component_add_impl(mecs_registry_t* io_registry, mecs_entity_t i_entity, mecs_component_t i_component)
 {
     mecs_component_store_t* component_store; 
@@ -479,6 +506,10 @@ void mecs_component_remove_impl(mecs_registry_t* io_registry, mecs_entity_t i_en
         }
         else
         {
+            if (component_store->dtor_func != NULL)
+            {
+                component_store->dtor_func(entity_component_elem);
+            }
             memcpy(entity_component_elem, last_entity_component_elem, component_store->size);
         }
 
