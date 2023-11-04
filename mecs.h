@@ -18,15 +18,68 @@ typedef char mecs_bool_t;
 #define mecs_assert(i_condition)                assert(i_condition)
 
 #include <stdlib.h>
-#define mecs_free(i_ptr)                        free(i_ptr)
-#define mecs_malloc(i_size)                     malloc(i_size)
-#define mecs_calloc(i_len, i_size)              calloc((i_len), (i_size))
-#define mecs_realloc(i_ptr, i_size)             realloc((i_ptr), (i_size))
 
-#define mecs_malloc_type(i_type)                (i_type*)mecs_malloc(sizeof(i_type))
-#define mecs_calloc_type(i_type)                (i_type*)mecs_calloc(1, sizeof(i_type))
-#define mecs_calloc_arr(i_len, i_type)          (i_type*)mecs_calloc((i_len), sizeof(i_type))
-#define mecs_realloc_arr(i_ptr, i_len, i_type)  (i_type*)mecs_realloc((i_ptr), (i_len) * sizeof(i_type))
+/* --------------------------------------------------
+Memory management.
+Allows for the implementation of custom allocators or defines default implementations build on the C standard library.
+-------------------------------------------------- */
+#if defined(mecs_realloc) && !defined(mecs_free) || !defined(mecs_realloc) && defined(mecs_free)
+    #error "You must define both mecs_realloc and mecs_free."
+#endif
+#if defined(mecs_realloc_aligned) && !defined(mecs_free_aligned) || !defined(mecs_realloc_aligned) && defined(mecs_free_aligned)
+    #error "You must define both mecs_realloc_aligned and mecs_free_aligned."
+#endif
+
+#if !defined(mecs_realloc) && !defined(mecs_free)
+    #include <stdlib.h>
+    #define mecs_realloc(io_data, i_size)                       realloc((io_data), (i_size))
+    #define mecs_free(io_data)                                  free(io_data)
+#endif
+
+#if !defined(mecs_realloc_aligned) && !defined(mecs_free_aligned)
+    #define mecs_realloc_aligned(io_data, i_size, i_alignment)  mecs_realloc_aligned_impl((io_data), (i_size), (i_alignment))
+    #define mecs_free_aligned(io_data)                          mecs_free_aligned_impl(io_data)
+#endif
+
+#define mecs_malloc_aligned(i_size, i_alignment)                mecs_realloc_aligned(NULL, (i_size), (i_alignment))
+#define mecs_malloc_type(i_type)                                (i_type*)mecs_realloc(NULL, sizeof(i_type))
+#define mecs_malloc_arr(i_type, i_len)                          (i_type*)mecs_realloc(NULL, (i_len) * sizeof(i_type))
+#define mecs_realloc_arr(i_type, i_ptr, i_len)                  (i_type*)mecs_realloc((i_ptr), (i_len) * sizeof(i_type))
+
+void* mecs_realloc_aligned_impl(void* io_data, size_t i_size, size_t i_alignment)
+{
+    size_t offset;
+    mecs_uint8_t* pointer;
+    mecs_uint8_t* return_pointer;
+    size_t offset_from_prev_align;
+    size_t offset_to_next_align;
+    mecs_assert(i_alignment < 256);
+
+    pointer = ((mecs_uint8_t*)io_data);
+    if (pointer != NULL)
+    {
+        offset = *(((mecs_uint8_t*)io_data) - 1);
+        pointer = (pointer - offset);
+    }
+
+    pointer = (mecs_uint8_t*)mecs_realloc(pointer, i_size + i_alignment);
+    mecs_assert(pointer != NULL);
+    
+    offset_from_prev_align = (size_t)pointer % i_alignment;
+    offset_to_next_align = i_alignment - offset_from_prev_align;
+    return_pointer = pointer + offset_to_next_align;
+
+    *(mecs_uint8_t*)(return_pointer - 1) = (mecs_uint8_t)offset_to_next_align;
+
+    return (void*)return_pointer;
+}
+
+void mecs_free_aligned_impl(void* io_data)
+{
+    size_t offset;
+    offset = *(((mecs_uint8_t*)io_data) - 1);
+    mecs_free(((mecs_uint8_t*)io_data) - offset);
+}
 
 #include <string.h>
 #define mecs_memset(i_ptr, i_value, i_size)     memset((i_ptr), (i_value), (i_size))
@@ -313,7 +366,7 @@ mecs_entity_gen_t mecs_entity_get_generation(mecs_entity_t i_entity)
 mecs_registry_t* mecs_registry_create(size_t i_component_count_reserve) 
 {
     mecs_registry_t* registry;
-    registry = mecs_calloc_type(mecs_registry_t);
+    registry = mecs_malloc_type(mecs_registry_t);
     if (registry == NULL)
     {
         return NULL;
@@ -323,22 +376,24 @@ mecs_registry_t* mecs_registry_create(size_t i_component_count_reserve)
        This is because registring new components should be an infrequent operation, likely only taking place during init. */
     registry->components_len = 0;
     registry->components_cap = i_component_count_reserve;
+    registry->components = NULL;
     if (registry->components_cap != 0)
     {
-        registry->components = mecs_calloc_arr(registry->components_cap, mecs_component_store_t);
+        registry->components = mecs_malloc_arr(mecs_component_store_t, registry->components_cap);
         if (registry->components == NULL)
         {
             mecs_free(registry);
             mecs_assert(MECS_FALSE);
             return NULL;
         }
+        mecs_memset(registry->components, 0x00, sizeof(mecs_component_store_t) * registry->components_cap);
     }
 
     /* Reserve space for entities to prevent frequent growing of the array when the first entities get added. */
     registry->next_free_entity = 0;
     registry->entities_len = 0;
     registry->entities_cap = 8; 
-    registry->entities = mecs_calloc_arr(registry->entities_cap, mecs_entity_t);
+    registry->entities = mecs_malloc_arr(mecs_entity_t, registry->entities_cap);
     if (registry->entities == NULL)
     {
         if (registry->components != NULL)
@@ -358,11 +413,57 @@ mecs_registry_t* mecs_registry_create(size_t i_component_count_reserve)
 void mecs_registry_destroy(mecs_registry_t* io_registry) 
 {
     size_t i;
+    size_t block_idx;
+    size_t block_offset;
+    size_t component_idx;
+    void* component;
+    mecs_component_store_t* component_store;
     mecs_assert(io_registry != NULL);
 
     for (i = 0; i < io_registry->components_len; ++i)
     {
-        /* TODO: Deallocate sparse set. */
+        component_store = &io_registry->components[i];
+
+        /* Free sparse */
+        for (block_idx = 0; block_idx < component_store->sparse_len; ++block_idx)
+        {
+            if (component_store->sparse[block_idx] != NULL)
+            {
+                mecs_free(component_store->sparse[block_idx]);
+            }
+        }
+        if (component_store->sparse != NULL)
+        {
+            mecs_free(component_store->sparse);
+        }
+
+        /* Free components */
+        component_idx = 0;
+        for (block_idx = 0; block_idx < component_store->components_len; ++block_idx)
+        {
+            block_offset = 0;
+            while (component_idx < component_store->entities_count && block_offset < MECS_PAGE_LEN_DENSE)
+            {
+                if (component_store->dtor_func != NULL)
+                {
+                    component = (void*)(((char*)component_store->components[block_idx]) + (block_offset * component_store->size));
+                    component_store->dtor_func(component);
+                }
+                component_idx += 1;
+                block_offset += 1;
+            }
+            mecs_free_aligned(component_store->components[block_idx]);
+        }
+        if (component_store->components != NULL)
+        {
+            mecs_free(component_store->components);
+        }
+
+        /* Free dense */
+        if (component_store->dense != NULL)
+        {
+            mecs_free(component_store->dense);
+        }
     }
 
     if (io_registry->components_cap != 0)
@@ -392,7 +493,7 @@ mecs_component_t mecs_component_register_impl(mecs_registry_t* io_registry, char
     {
         /* Grow array by 1 to guarantee minimal memory usage. */
         new_capacity = io_registry->components_cap + 1;
-        components_grown = mecs_realloc_arr(io_registry->components, new_capacity, mecs_component_store_t);
+        components_grown = mecs_realloc_arr(mecs_component_store_t, io_registry->components, new_capacity);
         if (components_grown == NULL)
         {
             mecs_assert(MECS_FALSE);
@@ -430,21 +531,18 @@ mecs_component_t mecs_component_register_impl(mecs_registry_t* io_registry, char
 void mecs_component_register_ctor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_ctor_func_t i_ctor)
 {
     mecs_assert(io_registry);
-    mecs_assert(io_registry->components[i_component].ctor_func == NULL);
     io_registry->components[i_component].ctor_func = i_ctor;
 }
 
 void mecs_component_register_dtor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_dtor_func_t i_dtor)
 {
     mecs_assert(io_registry);
-    mecs_assert(io_registry->components[i_component].dtor_func == NULL);
     io_registry->components[i_component].dtor_func = i_dtor;
 }
 
 void mecs_component_register_move_and_dtor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_move_and_dtor_func_t i_move_and_dtor)
 {
     mecs_assert(io_registry);
-    mecs_assert(io_registry->components[i_component].move_and_dtor_func == NULL);
     io_registry->components[i_component].move_and_dtor_func = i_move_and_dtor;
 }
 
@@ -641,7 +739,7 @@ mecs_sparse_t* mecs_component_add_sparse_element(mecs_component_store_t* i_compo
     if (page_index >= i_component_store->sparse_len)
     {
         /* Grow the array of sparse pages so we can hold the page for this entity. Don't allocate the page for this entity yet. */
-        sparse_grown = mecs_realloc_arr(i_component_store->sparse, page_index + 1, mecs_sparse_block_t*);
+        sparse_grown = mecs_realloc_arr(mecs_sparse_block_t*, i_component_store->sparse, page_index + 1);
         if (sparse_grown == NULL)
         {
             mecs_assert(MECS_FALSE);
@@ -692,7 +790,7 @@ void* mecs_component_add_dense_element(mecs_component_store_t* i_component_store
         /* Grow the dense array to match the entries in the components array after allocating a new page. */
         dense_grown_offset = i_component_store->components_len * MECS_PAGE_LEN_DENSE;
         dense_grown_size = (i_component_store->components_len + 1) * MECS_PAGE_LEN_DENSE;
-        dense_grown = mecs_realloc_arr(i_component_store->dense, dense_grown_size, mecs_dense_t);
+        dense_grown = mecs_realloc_arr(mecs_dense_t, i_component_store->dense, dense_grown_size);
         if (dense_grown == NULL)
         {
             mecs_assert(MECS_FALSE);
@@ -702,7 +800,7 @@ void* mecs_component_add_dense_element(mecs_component_store_t* i_component_store
         i_component_store->dense = dense_grown;
 
         /* Allocate a new component page. */
-        components_page = mecs_calloc(MECS_PAGE_LEN_DENSE, i_component_store->size);
+        components_page = mecs_malloc_aligned(MECS_PAGE_LEN_DENSE * i_component_store->size, i_component_store->alignment);
         if (components_page == NULL)
         {
             mecs_assert(MECS_FALSE);
@@ -710,7 +808,7 @@ void* mecs_component_add_dense_element(mecs_component_store_t* i_component_store
         }
         
         /* Grow the array of component pages so we can hold the new page. */
-        components_grown = mecs_realloc_arr(i_component_store->components, i_component_store->components_len + 1, void*);
+        components_grown = mecs_realloc_arr(void*, i_component_store->components, i_component_store->components_len + 1);
         if (components_grown == NULL)
         {
             mecs_free(components_page);
@@ -754,7 +852,7 @@ mecs_entity_t mecs_entity_create(mecs_registry_t* io_registry)
                 new_capacity = (mecs_entity_size_t)-1; /* Ensure we don't overflow and utalise the full range of available ids. */
             }
 
-            entities_grown = mecs_realloc_arr(io_registry->entities, new_capacity, mecs_entity_t);
+            entities_grown = mecs_realloc_arr(mecs_entity_t, io_registry->entities, new_capacity);
             if (entities_grown == NULL)
             {
                 mecs_assert(MECS_FALSE);

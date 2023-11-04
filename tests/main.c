@@ -1,13 +1,134 @@
-#define MECS_IMPLEMENTATION 
-#include "../mecs.h"
-
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <cassert>
 
 #define STRINGIFY(v) #v
 #define test(i_condition) if (!(i_condition)) { printf("Test line %d failed: %s\n", __LINE__, STRINGIFY(i_condition)); assert(0); }
 #define test_str(i_value, i_expected) if (strcmp((i_value), (i_expected)) == 1) { printf("Test line %d failed. Expected: %s, Got: %s\n", __LINE__, (i_expected), (i_value)); assert(0); }
 #define test_uint(i_value, i_expected) if ((i_value) != (i_expected)) { printf("Test line %d failed. Expected: %zu, Got: %zu\n", __LINE__, (size_t)(i_expected), (size_t)(i_value)); assert(0); }
+
+typedef struct 
+{
+    size_t address;
+    size_t size;
+    char freed;
+} allocation_t;
+
+#define MAX_ALLOCATIONS 1024
+allocation_t g_memory_leak_allocations[MAX_ALLOCATIONS];
+size_t g_memory_leak_total_allocations_made;
+size_t g_memory_leak_total_allocated;
+size_t g_memory_leak_total_freed;
+
+void memory_leak_detector_init(void) 
+{ 
+    size_t i;
+    for (i = 0; i < MAX_ALLOCATIONS; ++i)
+    {
+        g_memory_leak_allocations[i].address = 0;
+        g_memory_leak_allocations[i].size = 0;
+        g_memory_leak_allocations[i].freed = 1;
+    }
+    g_memory_leak_total_allocations_made = 0; 
+    g_memory_leak_total_allocated = 0; 
+    g_memory_leak_total_freed = 0;
+}
+
+void memory_leak_detector_shutdown(void) 
+{ 
+    size_t i;
+    printf("--------------------------------------------------\n");
+    for (i = 0; i < MAX_ALLOCATIONS; ++i)
+    {
+        if (g_memory_leak_allocations[i].address == 0)
+        {
+            break;
+        }
+        if (g_memory_leak_allocations[i].freed == 0)
+        {
+            printf("Memory leak detected. Address: %zx, Size %zu\n", g_memory_leak_allocations[i].address, g_memory_leak_allocations[i].size);
+        }
+    }
+
+    printf("--------------------------------------------------\n");
+    printf("Total allocations made: %zu.\n", g_memory_leak_total_allocations_made);
+    printf("Total memory allocted:  %zu bytes.\n", g_memory_leak_total_allocated);
+    printf("Total memory freed:     %zu bytes.\n", g_memory_leak_total_freed);
+    if (g_memory_leak_total_allocated != g_memory_leak_total_freed) 
+    { 
+        printf("Total memory leaked:    %zu bytes.\n", g_memory_leak_total_allocated - g_memory_leak_total_freed);
+        assert(0);
+    }
+    printf("--------------------------------------------------\n");
+}
+
+void* memory_leak_detector_realloc(void* i_ptr, size_t i_size) 
+{ 
+    size_t i;
+    g_memory_leak_total_allocated += i_size; 
+
+    if (i_ptr != NULL)
+    {
+        for (i = 0; i < MAX_ALLOCATIONS; ++i)
+        {
+            if (g_memory_leak_allocations[i].address == (size_t)i_ptr)
+            {
+                if (g_memory_leak_allocations[i].freed == 1)
+                {
+                    printf("Detected realloc of a freed address. Address: %zx, Size %zu\n", g_memory_leak_allocations[i].address, g_memory_leak_allocations[i].size);
+                    assert(0);
+                }
+                g_memory_leak_allocations[i].freed = 1;
+                g_memory_leak_total_freed += g_memory_leak_allocations[i].size; 
+                break;
+            }
+        }
+    }
+
+    i_ptr = realloc(i_ptr, i_size);
+    for (i = 0; i < MAX_ALLOCATIONS; ++i)
+    {
+        if (g_memory_leak_allocations[i].address == (size_t)i_ptr || g_memory_leak_allocations[i].address == 0)
+        {
+            g_memory_leak_allocations[i].address = (size_t)i_ptr;
+            g_memory_leak_allocations[i].size = i_size;
+            g_memory_leak_allocations[i].freed = 0;
+            g_memory_leak_total_allocations_made += 1;
+            return i_ptr;
+        }
+    }
+    printf("Max allocations reached.\n");
+    assert(0);
+    return NULL;
+}
+
+void memory_leak_detector_free(void* i_ptr) 
+{ 
+    size_t i;
+    for (i = 0; i < MAX_ALLOCATIONS; ++i)
+    {
+        if (g_memory_leak_allocations[i].address == (size_t)i_ptr)
+        {
+            if (g_memory_leak_allocations[i].freed == 1)
+            {
+                printf("Detected double free. Address: %zx, Size %zu\n", g_memory_leak_allocations[i].address, g_memory_leak_allocations[i].size);
+                assert(0);
+            }
+            g_memory_leak_allocations[i].freed = 1;
+            g_memory_leak_total_freed += g_memory_leak_allocations[i].size; 
+            free(i_ptr); 
+            return;
+        }
+    }
+    printf("Allocation not found. Address: %zx\n", (size_t)i_ptr);
+    assert(0);
+}
+
+#define mecs_realloc(io_data, i_size) memory_leak_detector_realloc((io_data), (i_size))
+#define mecs_free(io_data) memory_leak_detector_free(io_data)
+#define MECS_IMPLEMENTATION 
+#include "../mecs.h"
 
 typedef struct 
 {
@@ -266,7 +387,9 @@ void test_constructor_c(void)
     MECS_COMPONENT_REGISTER(registry, test_comp_4);
     MECS_COMPONENT_REGISTER_CTOR(registry, test_comp_4, &init_test_comp4);
     MECS_COMPONENT_REGISTER_DTOR(registry, test_comp_4, &destroy_test_comp4);
-    /* MECS_COMPONENT_REGISTER_MOVE_AND_DTOR(registry, test_comp_4, &overide_test_comp4); */
+    #if defined(__cplusplus)
+        MECS_COMPONENT_REGISTER_MOVE_AND_DTOR(registry, test_comp_4, NULL);
+    #endif
 
     g_test_destructor_count = 0;
     entity0 = mecs_entity_create(registry);
@@ -346,6 +469,7 @@ int main(void) {
     Position* position0;
     Position* position2; 
 
+    memory_leak_detector_init();
     test_registry_create();
     test_entity_recycle();
     test_has_component();
@@ -354,6 +478,7 @@ int main(void) {
     #if defined(__cplusplus)
         test_constructor_cpp();
     #endif
+    memory_leak_detector_shutdown();
 
     registry = mecs_registry_create(1);
     MECS_COMPONENT_REGISTER(registry, Position);
