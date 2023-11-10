@@ -1,98 +1,289 @@
+/*
+MECS - v1 - Menno Markus 2023 - public domain
+Single header entity component system compatible with C89/C++98 and higher.
+
+Usage: 
+Before you include this file add the following define in *one* C or C++ file to dfine the implementation.
+#define MECS_IMPLEMENTATION
+#include "mecs.h"
+
+--------------------------------------------------
+Documentation
+--------------------------------------------------
+Table:
+    1.) Functions
+        1.1) The registry
+        1.2) Components
+        1.3) Entities
+        1.4) Queries
+    2.) Compile time options
+    3.) Standard library compile time options
+
+1.) FUNCTIONS
+
+1.1) THE REGISTRY
+
+    registry_create
+    registry_destroy
+        registry_t* registry_create(mecs_component_size_t i_component_count_reserve)
+        void registry_destroy(registry_t* io_registry)
+
+1.2) COMPONENTS
+
+    COMPONENT_DECLARE
+    COMPONENT_REGISTER
+        void COMPONENT_DECLARE(T)
+        void COMPONENT_REGISTER(registry_t* io_registry, T)
+
+    COMPONENT_REGISTER_LIFE_TIME_HOOKS
+        void COMPONENT_REGISTER_LIFE_TIME_HOOKS(registry_t* io_registry, T, mecs_ctor_func_t i_ctor_func_ptr, mecs_dtor_func_t i_dtor_func_ptr, mecs_move_and_dtor_func_t i_move_and_dtor_func_ptr)
+        void mecs_ctor_func_t(void* io_data)
+        void mecs_dtor_func_t(void* io_data)
+        void mecs_move_and_dtor_func_t(void* io_src_to_move, void* io_dst_to_destruct)
+
+    component_add
+    component_remove
+        T* component_add(registry_t* io_registry, entity_t i_entity, T)
+        void component_remove(registry_t* io_registry, entity_t i_entity, T)
+
+    component_has
+        bool component_has(i_registry, entity_t i_entity, T)
+
+    component_get
+        T* component_get(registry_t* io_registry, entity_t i_entity, T)
+
+1.3) ENTITIES
+    entity_get_id
+    entity_get_generation
+        entity_id_t entity_get_id(entity_t i_entity)
+        entity_gen_t entity_get_generation(entity_t i_entity)
+
+    entity_create
+    entity_destroy
+        entity_t entity_create(registry_t* io_registry)
+        void entity_destroy(registry_t* io_registry, entity_t i_entity)
+
+    entity_is_destroyed
+        bool entity_is_destroyed(registry_t* io_registry, entity_t i_entity)
+
+1.4) QUERIES
+    query_create
+        query_it_t query_create()
+
+    query_with
+        void query_with(query_it_t* io_query_it, T)
+
+    query_without
+        void query_without(query_it_t* io_query_it, T)
+
+    query_optional
+        void query_optional(query_it_t* io_query_it, T)
+
+    query_begin
+    query_next
+        void query_begin(registry_t* io_registry, query_it_t* io_query_it)
+        bool query_next(mecs_query_it_t* io_query_it)
+
+    query_entity_get
+        entity_t query_entity_get(query_it_t* io_query_it)
+
+    query_component_has
+        bool query_component_has(query_it_t* io_query_it, T, size_t i_index)
+
+    query_component_get
+        T* query_component_get(query_it_t* io_query_it, T, size_t i_index)
+
+2.) COMPILE TIME OPTIONS
+
+    #define MECS_PAGE_LEN_SPARSE
+        Must be defined globally.
+
+        Define how many entities should be helt per page of the sparse array.
+        Defaults to 4096 / sizeof mecs_entity_t (= 1024) items.
+
+    #define MECS_PAGE_LEN_DENSE
+        Must be defined globally.
+
+        Define how many components should be helt per page of the dense array.
+        Defaults to 512 items.
+
+    #define MECS_NO_SHORT_NAMES
+        Must be defined globally.
+        
+        Short names remove the mecs_ prefix on common public api
+        types/functions. Allows to disable this behaviour. Default undefined.
+
+    #define MECS_NO_DEFAULT_REGISTER_CPP_LIFETIME
+        Must be defined globally.
+
+        Allows to disable the automatic usage of C++ constructors/destructors
+        with components. Default undefined.
+
+3.) STANDARD LIBRARY COMPILE TIME OPTIONS
+
+    #define mecs_uint8_t 
+    #define mecs_uint16_t 
+    #define mecs_uint32_t
+        Must be defined globally.
+
+        Default implementation always provided through either "stdint.h",
+        "cstdint" or by using unsigned char, unsigned short, unsigned long
+        respectively for these types. If you define one, you most define all
+        three. Can be used to provide your own implementation for the fixed size
+        data types mecs uses on platforms that don't support these through the
+        C/C++ standard library or have weird sizes. .
+
+    #define mecs_bool_t 
+    #define MECS_TRUE
+    #define MECS_FALSE
+        Must be defined globally.
+
+        Default implementation always provided through "stdbool.h", C++ build
+        in bool type or by using unsigned char with values 1 and 0. If you
+        define one, you most define all three. Can be used to provide your own
+        implementation for booleans. 
+
+    #define mecs_alignof
+        Must be defined globally.
+
+        Defaults to implementation provided either by the C/C++ standard
+        library, compiler build ins or portable C/C++ implementation. Used to
+        return the alignment of a type and used in combination with
+        mecs_realloc_aligned. Can be used to provide your own implementation
+        that on compilers/platforms that have build in support. 
+        
+    #define MECS_CHAR_BIT
+        Must be defined by the file containing #define MECS_IMPLEMENTATION.
+
+        Defaults to "limits.h" or "climits". Can be used to provide your own
+        implementation for how many bits are in a byte on platforms that don't
+        support this through the C/C++ standard library.
+
+    #define mecs_assert(i_condition)
+        Must be defined by the file containing #define MECS_IMPLEMENTATION.
+
+        Defaults to "assert.h" or "cassert". Mecs heavily depend on asserts for
+        error checking. Can be used to provide your own assert implementation.
+
+    #define mecs_realloc(io_data, i_size) 
+    #define mecs_free(io_data)
+        Must be defined by the file containing #define MECS_IMPLEMENTATION.
+
+        Defaults to standard library realloc and free. If you define one, you
+        most define the other. Can be used to provide your own custom allocator.
+
+    #define mecs_realloc_aligned(io_data, i_size, i_alignment) 
+    #define mecs_free_aligned(io_data)
+        Must be defined by the file containing #define MECS_IMPLEMENTATION.
+
+        Defaults to implementations build on mecs_realloc and mecs_free. If you
+        define one, you most define the other. Used to support user components
+        that require a specific alignment, but the libary does not enforce that
+        the returned allocation is actually aligned. Can be used to provide your
+        own custom allocator.  
+
+*/
 #ifndef MECS_H
 #define MECS_H
 
-/* TODO: Turns these std defines into library options. */
+/*
+V1, 10-Nov-2023, Initial version released.
+*/
+#define MECS_VERSION 1
 
-#include <stdint.h>
-#include <limits.h>
-typedef uint8_t mecs_uint8_t;
-typedef uint16_t mecs_uint16_t;
-typedef uint32_t mecs_uint32_t;
-#define MECS_CHAR_BIT CHAR_BIT
+#if !defined(MECS_NO_SHORT_NAMES)
+#define component_t                             mecs_component_t                                            
+#define COMPONENT_DECLARE                       MECS_COMPONENT_DECLARE                                                  
+#define COMPONENT_REGISTER                      MECS_COMPONENT_REGISTER                                                   
+#define COMPONENT_REGISTER_LIFE_TIME_HOOKS      MECS_COMPONENT_REGISTER_LIFE_TIME_HOOKS                                                                                
+#define component_add                           mecs_component_add                                                              
+#define component_remove                        mecs_component_remove                                                                 
+#define component_has                           mecs_component_has                                                              
+#define component_get                           mecs_component_get                                                              
 
-typedef char mecs_bool_t;
-#define MECS_TRUE 1
-#define MECS_FALSE 0
+#define entity_t                                mecs_entity_t                                         
+#define entity_id_t                             mecs_entity_id_t                                            
+#define entity_gen_t                            mecs_entity_gen_t                                             
+#define entity_get_id                           mecs_entity_get_id
+#define entity_get_generation                   mecs_entity_get_generation                                                        
+#define entity_create                           mecs_entity_create                                        
+#define entity_destroy                          mecs_entity_destroy                                          
+#define entity_is_destroyed                     mecs_entity_is_destroyed                                                    
 
-#include <assert.h>
-#define mecs_assert(i_condition)                assert(i_condition)
+#define registry_t                              mecs_registry_t
+#define registry_create                         mecs_registry_create                                            
+#define registry_destroy                        mecs_registry_destroy                                              
 
-#include <stdlib.h>
+#define query_it_t                              mecs_query_it_t
+#define query_with                              mecs_query_with                                  
+#define query_without                           mecs_query_without                                        
+#define query_optional                          mecs_query_optional                                          
+#define query_create                            mecs_query_create
+#define query_begin                             mecs_query_begin
+#define query_next                              mecs_query_next
+#define query_entity_get                        mecs_query_entity_get
+#define query_component_has                     mecs_query_component_has                                                    
+#define query_component_get                     mecs_query_component_get                                                     
+#endif
 
 /* --------------------------------------------------
-Memory management.
-Allows for the implementation of custom allocators or defines default implementations build on the C standard library.
+Definition of compiler and platform agnostic standard library types/functions.
 -------------------------------------------------- */
-#if defined(mecs_realloc) && !defined(mecs_free) || !defined(mecs_realloc) && defined(mecs_free)
-    #error "You must define both mecs_realloc and mecs_free."
+
+/* Provide custom or default implementation of stdint.h fixed size types. */
+#if defined(mecs_uint8_t) || defined(mecs_uint16_t) || defined(mecs_uint32_t)
+    #if !defined(mecs_uint8_t) || !defined(mecs_uint16_t) || !defined(mecs_uint32_t)
+        #error "You must define all of mecs_uint8_t, mecs_uint16_t and mecs_uint32_t."
+    #endif
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L /* C99 */
+    #include <stdint.h>
+    typedef uint8_t         mecs_uint8_t;
+    typedef uint16_t        mecs_uint16_t;
+    typedef uint32_t        mecs_uint32_t;
+#elif defined(_cplusplus) && _cplusplus >= 201103L /* C++11 */
+    #include <cstdint>
+    typedef std::uint8_t    mecs_uint8_t;
+    typedef std::uint16_t   mecs_uint16_t;
+    typedef std::uint32_t   mecs_uint32_t;
+#else
+    typedef unsigned char   mecs_uint8_t;
+    typedef unsigned short  mecs_uint16_t;
+    typedef unsigned long   mecs_uint32_t;
 #endif
-#if defined(mecs_realloc_aligned) && !defined(mecs_free_aligned) || !defined(mecs_realloc_aligned) && defined(mecs_free_aligned)
-    #error "You must define both mecs_realloc_aligned and mecs_free_aligned."
+
+/* Provide custom or default implementation for booleans. */
+#if defined(mecs_bool_t) || defined(MECS_TRUE) || defined(MECS_FALSE)
+    #if !defined(mecs_bool_t) || !defined(MECS_TRUE) || !defined(MECS_FALSE)
+        #error "You must define all of mecs_bool_t, MECS_TRUE and MECS_FALSE."
+    #endif
+#elif defined(_cplusplus) || (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) /* C++ or C99 */
+    typedef bool            mecs_bool_t;
+    #define MECS_TRUE       true
+    #define MECS_FALSE      false
+#else
+    typedef unsigned char   mecs_bool_t;
+    #define MECS_TRUE       1
+    #define MECS_FALSE      0
 #endif
 
-#if !defined(mecs_realloc) && !defined(mecs_free)
-    #include <stdlib.h>
-    #define mecs_realloc(io_data, i_size)                       realloc((io_data), (i_size))
-    #define mecs_free(io_data)                                  free(io_data)
-#endif
-
-#if !defined(mecs_realloc_aligned) && !defined(mecs_free_aligned)
-    #define mecs_realloc_aligned(io_data, i_size, i_alignment)  mecs_realloc_aligned_impl((io_data), (i_size), (i_alignment))
-    #define mecs_free_aligned(io_data)                          mecs_free_aligned_impl(io_data)
-#endif
-
-#define mecs_malloc_aligned(i_size, i_alignment)                mecs_realloc_aligned(NULL, (i_size), (i_alignment))
-#define mecs_malloc_type(i_type)                                (i_type*)mecs_realloc(NULL, sizeof(i_type))
-#define mecs_malloc_arr(i_type, i_len)                          (i_type*)mecs_realloc(NULL, (i_len) * sizeof(i_type))
-#define mecs_realloc_arr(i_type, i_ptr, i_len)                  (i_type*)mecs_realloc((i_ptr), (i_len) * sizeof(i_type))
-
-void* mecs_realloc_aligned_impl(void* io_data, size_t i_size, size_t i_alignment)
-{
-    size_t offset;
-    mecs_uint8_t* pointer;
-    mecs_uint8_t* return_pointer;
-    size_t offset_from_prev_align;
-    size_t offset_to_next_align;
-    mecs_assert(i_alignment < 256);
-
-    pointer = ((mecs_uint8_t*)io_data);
-    if (pointer != NULL)
-    {
-        offset = *(((mecs_uint8_t*)io_data) - 1);
-        pointer = (pointer - offset);
-    }
-
-    pointer = (mecs_uint8_t*)mecs_realloc(pointer, i_size + i_alignment);
-    mecs_assert(pointer != NULL);
-    
-    offset_from_prev_align = (size_t)pointer % i_alignment;
-    offset_to_next_align = i_alignment - offset_from_prev_align;
-    return_pointer = pointer + offset_to_next_align;
-
-    *(mecs_uint8_t*)(return_pointer - 1) = (mecs_uint8_t)offset_to_next_align;
-
-    return (void*)return_pointer;
-}
-
-void mecs_free_aligned_impl(void* io_data)
-{
-    size_t offset;
-    offset = *(((mecs_uint8_t*)io_data) - 1);
-    mecs_free(((mecs_uint8_t*)io_data) - offset);
-}
-
-#include <string.h>
-#define mecs_memset(i_ptr, i_value, i_size)     memset((i_ptr), (i_value), (i_size))
-
+/* Alignment. Provide custom implementation of alignof or default implementation which attempts to grab the most accurate implementation. */
 #if !defined(mecs_alignof)
-    #if defined(__cplusplus)
+    #if defined(__cplusplus) && _cplusplus >= 201103L /* C++11 */
+        #define mecs_alignof(T)     ((size_t)alignof(T))
+    #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L /* C11 */
+        #define mecs_alignof(T)     ((size_t)_Alignof(T))
+    #elif defined(_MSC_VER)
+        #define mecs_alignof(T)     ((size_t)__alignof(T))
+    #elif defined(__GNUC__)
+        #define mecs_alignof(T)     ((size_t)__alignof__(T))
+    #elif defined(__cplusplus)
         /* Portable alignment implementation by Martin Buchholz ( https://wambold.com/Martin/writings/alignof.html ) */
         /* 1) Attempt to find the alignment by rounding to the nearest power of 2. */
         namespace mecs_alignof_nearest_power_of_two {
             template<typename T>
             struct alignof_t { 
                 enum { 
-                    size = sizeof (T), 
+                    size = sizeof(T), 
                     value = size ^ (size & (size - 1))
                 }; 
             };
@@ -134,19 +325,15 @@ void mecs_free_aligned_impl(void* io_data)
             };
         };
 
-        #define mecs_alignof(i_type)                static_cast<size_t>(mecs_alignof_t<i_type>::value)
-    #elif defined(_MSC_VER)
-        #define mecs_alignof(i_type)                (size_t)__alignof(i_type)
-    #elif defined(__GNUC__)
-        #define mecs_alignof(i_type)                (size_t)__alignof__(i_type)
+        #define mecs_alignof(T)                static_cast<size_t>(mecs_alignof_t<T>::value)
     #else
-        #define mecs_alignof(i_type)                (((size_t)&( (struct{ mecs_uint8_t b; i_type t; }* )0 )->t)
+        #define mecs_alignof(T)                (((size_t)&( (struct{ mecs_uint8_t b; T t; }* )0 )->t)
     #endif
 #endif
 
-
-
-/* TODO: Expose defines to user as library options. */
+/* --------------------------------------------------
+Definition of the core library.
+-------------------------------------------------- */
 
 /* An entity consists out of a generation in the bottom bits and an id in the top bits. 
    Ids may be reused so the generation can be used to check if an entity has been destroyed. */
@@ -160,43 +347,30 @@ typedef mecs_entity_id_t mecs_entity_size_t;
 #define MECS_ENTITY_GENERATION_INVALID ((mecs_entity_gen_t)-1)
 
 /* Each component has a unique index assigned to it by the registry. */
-typedef size_t mecs_component_t;
+typedef mecs_uint32_t mecs_component_t;
+typedef mecs_component_t mecs_component_size_t;
 #define MECS_COMPONENT_INVALID ((mecs_component_t)-1)
 
 typedef mecs_entity_t mecs_sparse_t;
 typedef mecs_entity_t mecs_dense_t;
 #define MECS_SPARSE_INVALID ((mecs_sparse_t)-1) 
-#define MECS_PAGE_LEN_SPARSE (4096 / sizeof(mecs_sparse_t)) /* Default chosen to equal as many entities as fit in the common page size (4kb). */
-#define MECS_PAGE_LEN_DENSE 512
 
-/* Hooks into the lifetime of a component. In C++ we automatically register the constructor and destructor. */
+#if !defined(MECS_PAGE_LEN_SPARSE)
+    #define MECS_PAGE_LEN_SPARSE (4096 / sizeof(mecs_sparse_t)) /* Default chosen to equal as many entities as fit in the common page size (4kb). */
+#endif
+#if !defined(MECS_PAGE_LEN_DENSE)
+    #define MECS_PAGE_LEN_DENSE 512
+#endif
+
+/* Hooks for callbacks regarding the lifetime of a component. In C++ we automatically register the constructor and destructor. */
 typedef void(*mecs_ctor_func_t)(void* io_data);
 typedef void(*mecs_dtor_func_t)(void* io_data);
 typedef void(*mecs_move_and_dtor_func_t)(void* io_src_to_move, void* io_dst_to_destruct);
 
-#if defined(__cplusplus)
-    #include <new>
-
-    template <typename T>
-    void mecs_ctor_cpp_impl(void* io_data)
-    {
-        ::new(io_data) T;
-    }
-
-    template <typename T>
-    void mecs_dtor_cpp_impl(void* io_data)
-    {
-        ((T*)io_data)->~T();
-    }
-
-    template <typename T>
-    void mecs_move_and_dtor_cpp_impl(void* io_src_to_move, void* io_dst_to_destruct)
-    {
-        T* dst = (T*)io_dst_to_destruct; 
-        T* src = (T*)io_src_to_move; 
-        *dst = static_cast<T&&>(*src);
-        src->~T();
-    }
+#if !defined(MECS_NO_DEFAULT_REGISTER_CPP_LIFETIME) && defined(__cplusplus)
+    template<typename T> void mecs_ctor_cpp_impl(void* io_data);
+    template<typename T> void mecs_dtor_cpp_impl(void* io_data);
+    template<typename T> void mecs_move_and_dtor_cpp_impl(void* io_src_to_move, void* io_dst_to_destruct);
 #endif
 
 typedef struct
@@ -236,7 +410,7 @@ typedef struct
     /* Array of component types. Capacity will always try to equal length to minimize memory, but can be used to reserve memory. 
        This is because registring new components should be an infrequent operation, likely only happening during init. */
     mecs_component_store_t* components;
-    size_t components_len;
+    mecs_component_size_t components_len;
     size_t components_cap;
 
     /* Array of both alive entities and destroyed entities. Destroyed entities form an implicit linked list within the array. 
@@ -264,7 +438,7 @@ typedef struct
     mecs_component_t component;
 } mecs_query_arg_t;
 
-/* Uncached query. Quick to construct and lives on the stack with now references by the registry but potentially slower to iterate. */
+/* Uncached query. Quick to construct and lives on the stack with no references by the registry but potentially slower to iterate. */
 typedef struct 
 {
     /* Points into the dense array of the component store that is the base of this iterator. 
@@ -281,26 +455,25 @@ typedef struct
 } mecs_query_it_t;
 
 
-#define MECS_COMPONENT_IDENT(i_type)                                                            mecs__component_##i_type##_id
-#define MECS_COMPONENT_DECLARE(i_type)                                                          mecs_component_t MECS_COMPONENT_IDENT(i_type)
-#if defined(__cplusplus)
-    #define MECS_COMPONENT_REGISTER(io_registry, i_type)                                        MECS_COMPONENT_IDENT(i_type) = mecs_component_register_impl((io_registry), #i_type, sizeof(i_type), mecs_alignof(i_type), &mecs_ctor_cpp_impl<i_type>, &mecs_dtor_cpp_impl<i_type>, &mecs_move_and_dtor_cpp_impl<i_type> )
+#define MECS_COMPONENT_IDENT(T)                                                            mecs__component_##T##_id
+#define MECS_COMPONENT_DECLARE(T)                                                          mecs_component_t MECS_COMPONENT_IDENT(T)
+#if !defined(MECS_NO_DEFAULT_REGISTER_CPP_LIFETIME) && defined(__cplusplus)
+    #define MECS_COMPONENT_REGISTER(io_registry, T)                                        MECS_COMPONENT_IDENT(T) = mecs_component_register_impl((io_registry), #T, sizeof(T), mecs_alignof(T), &mecs_ctor_cpp_impl<T>, &mecs_dtor_cpp_impl<T>, &mecs_move_and_dtor_cpp_impl<T> )
 #else
-    #define MECS_COMPONENT_REGISTER(io_registry, i_type)                                        MECS_COMPONENT_IDENT(i_type) = mecs_component_register_impl((io_registry), #i_type, sizeof(i_type), mecs_alignof(i_type), NULL, NULL, NULL )
+    #define MECS_COMPONENT_REGISTER(io_registry, T)                                        MECS_COMPONENT_IDENT(T) = mecs_component_register_impl((io_registry), #T, sizeof(T), mecs_alignof(T), NULL, NULL, NULL )
 #endif
-#define MECS_COMPONENT_REGISTER_CTOR(io_registry, i_type, i_ctor_func_ptr)                      mecs_component_register_ctor_impl((io_registry), MECS_COMPONENT_IDENT(i_type), (i_ctor_func_ptr))
-#define MECS_COMPONENT_REGISTER_DTOR(io_registry, i_type, i_dtor_func_ptr)                      mecs_component_register_dtor_impl((io_registry), MECS_COMPONENT_IDENT(i_type), (i_dtor_func_ptr))
-#define MECS_COMPONENT_REGISTER_MOVE_AND_DTOR(io_registry, i_type, i_move_and_dtor_func_ptr)    mecs_component_register_move_and_dtor_impl((io_registry), MECS_COMPONENT_IDENT(i_type), (i_move_and_dtor_func_ptr))
 
-#define mecs_component_add(io_registry, i_entity, i_type)                                       ((i_type*)mecs_component_add_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type)))
-#define mecs_component_remove(io_registry, i_entity, i_type)                                    mecs_component_remove_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
-#define mecs_component_has(i_registry, i_entity, i_type)                                        mecs_component_has_impl((i_registry), (i_entity), MECS_COMPONENT_IDENT(i_type))
-#define mecs_component_get(io_registry, i_entity, i_type)                                       ((i_type*)mecs_component_get_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(i_type)))
+#define MECS_COMPONENT_REGISTER_LIFE_TIME_HOOKS(io_registry, T, i_ctor_func_ptr, i_dtor_func_ptr, i_move_and_dtor_func_ptr) \
+    mecs_component_register_life_time_hooks_impl((io_registry), MECS_COMPONENT_IDENT(T), (i_ctor_func_ptr), (i_dtor_func_ptr), (i_move_and_dtor_func_ptr))
+
+#define mecs_component_add(io_registry, i_entity, T)                                       ((T*)mecs_component_add_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(T)))
+#define mecs_component_remove(io_registry, i_entity, T)                                    mecs_component_remove_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(T))
+#define mecs_component_has(i_registry, i_entity, T)                                        mecs_component_has_impl((i_registry), (i_entity), MECS_COMPONENT_IDENT(T))
+#define mecs_component_get(io_registry, i_entity, T)                                       ((T*)mecs_component_get_impl((io_registry), (i_entity), MECS_COMPONENT_IDENT(T)))
 
 mecs_component_t        mecs_component_register_impl(mecs_registry_t* io_registry, char const* name, size_t size, size_t alignment, mecs_ctor_func_t i_ctor, mecs_dtor_func_t i_dtor, mecs_move_and_dtor_func_t i_move_and_dtor);
-void                    mecs_component_register_ctor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_ctor_func_t i_ctor);
-void                    mecs_component_register_dtor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_dtor_func_t i_dtor);
-void                    mecs_component_register_move_and_dtor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_move_and_dtor_func_t i_move_and_dtor);
+void                    mecs_component_register_life_time_hooks_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_ctor_func_t i_ctor, mecs_dtor_func_t i_dtor, mecs_move_and_dtor_func_t i_move_and_dtor);
+
 void*                   mecs_component_add_impl(mecs_registry_t* io_registry, mecs_entity_t i_entity, mecs_component_t i_component);
 void                    mecs_component_remove_impl(mecs_registry_t* io_registry, mecs_entity_t i_entity, mecs_component_t i_component);
 mecs_bool_t             mecs_component_has_impl(mecs_registry_t const* i_registry, mecs_entity_t i_entity, mecs_component_t i_component);
@@ -322,14 +495,14 @@ mecs_entity_t           mecs_entity_create(mecs_registry_t* io_registry);
 mecs_bool_t             mecs_entity_destroy(mecs_registry_t* io_registry, mecs_entity_t i_entity);
 mecs_bool_t             mecs_entity_is_destroyed(mecs_registry_t* io_registry, mecs_entity_t i_entity);
 
-mecs_registry_t*        mecs_registry_create(size_t i_component_count_reserve);
+mecs_registry_t*        mecs_registry_create(mecs_component_size_t i_component_count_reserve);
 void                    mecs_registry_destroy(mecs_registry_t* io_registry);
 
-#define mecs_query_with(io_query_it, i_type)                    mecs_query_with_impl((io_query_it), MECS_COMPONENT_IDENT(i_type))
-#define mecs_query_without(io_query_it, i_type)                 mecs_query_without_impl((io_query_it), MECS_COMPONENT_IDENT(i_type))
-#define mecs_query_optional(io_query_it, i_type)                mecs_query_optional_impl((io_query_it), MECS_COMPONENT_IDENT(i_type))
-#define mecs_query_component_has(io_query_it, i_type, i_index)  mecs_query_component_has_impl((io_query_it), MECS_COMPONENT_IDENT(i_type), i_index)
-#define mecs_query_component_get(io_query_it, i_type, i_index)  ((i_type*)mecs_query_component_get_impl((io_query_it), MECS_COMPONENT_IDENT(i_type), i_index))
+#define mecs_query_with(io_query_it, T)                    mecs_query_with_impl((io_query_it), MECS_COMPONENT_IDENT(T))
+#define mecs_query_without(io_query_it, T)                 mecs_query_without_impl((io_query_it), MECS_COMPONENT_IDENT(T))
+#define mecs_query_optional(io_query_it, T)                mecs_query_optional_impl((io_query_it), MECS_COMPONENT_IDENT(T))
+#define mecs_query_component_has(io_query_it, T, i_index)  mecs_query_component_has_impl((io_query_it), MECS_COMPONENT_IDENT(T), i_index)
+#define mecs_query_component_get(io_query_it, T, i_index)  ((T*)mecs_query_component_get_impl((io_query_it), MECS_COMPONENT_IDENT(T), i_index))
 
 mecs_query_it_t         mecs_query_create(void);
 void                    mecs_query_with_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component);
@@ -341,9 +514,141 @@ mecs_entity_t           mecs_query_entity_get(mecs_query_it_t* io_query_it);
 mecs_bool_t             mecs_query_component_has_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component, size_t i_index);
 void*                   mecs_query_component_get_impl(mecs_query_it_t* io_query_it, mecs_component_t i_component, size_t i_index);
 
-
+#endif /* MECS_H */
 
 #ifdef MECS_IMPLEMENTATION
+
+/* --------------------------------------------------
+Implementaton of compiler and platform agnostic standard library types/functions.
+-------------------------------------------------- */
+
+/* Provide custom or default implementation for the number of bits in a char. */
+#if !defined(MECS_CHAR_BIT)
+    #if defined(_cplusplus)
+        #include <climits>
+    #else
+        #include <limits.h>
+    #endif
+    #define MECS_CHAR_BIT CHAR_BIT
+#endif
+
+/* Provide custom or default implementation for asserts which this library heavily depends on for error checking. */
+#if !defined(mecs_assert)
+    #if defined(_cplusplus)
+        #include <cassert>
+    #else
+        #include <assert.h>
+    #endif
+    #define mecs_assert(i_condition) assert(i_condition)
+#endif
+
+/* Provide custom or default implementation for memset. */
+#if !defined(mecs_memset)
+    #if defined(__cplusplus)
+        #include <cstring>
+        #define mecs_memset(i_ptr, i_value, i_size)     std::memset((i_ptr), (i_value), (i_size))
+    #else
+        #include <string.h>
+        #define mecs_memset(i_ptr, i_value, i_size)     memset((i_ptr), (i_value), (i_size))
+    #endif
+#endif
+
+/* Memory management. Provide custom allocator implementation or default implementation build on the C standard library. */
+#if defined(mecs_realloc) && !defined(mecs_free) || !defined(mecs_realloc) && defined(mecs_free)
+    #error "You must define both mecs_realloc and mecs_free."
+#endif
+#if defined(mecs_realloc_aligned) && !defined(mecs_free_aligned) || !defined(mecs_realloc_aligned) && defined(mecs_free_aligned)
+    #error "You must define both mecs_realloc_aligned and mecs_free_aligned."
+#endif
+
+#if !defined(mecs_realloc) && !defined(mecs_free)
+    #if defined(_cplusplus)
+        #include <cstdlib>
+    #else
+        #include <stdlib.h>
+    #endif
+    #define mecs_realloc(io_data, i_size)                       realloc((io_data), (i_size))
+    #define mecs_free(io_data)                                  free(io_data)
+#endif
+
+#if !defined(mecs_realloc_aligned) && !defined(mecs_free_aligned)
+    #define mecs_realloc_aligned(io_data, i_size, i_alignment)  mecs_realloc_aligned_impl((io_data), (i_size), (i_alignment))
+    #define mecs_free_aligned(io_data)                          mecs_free_aligned_impl(io_data)
+#endif
+
+    void* mecs_realloc_aligned_impl(void* io_data, size_t i_size, size_t i_alignment)
+    {
+        size_t offset;
+        mecs_uint8_t* pointer;
+        mecs_uint8_t* return_pointer;
+        size_t offset_from_prev_align;
+        size_t offset_to_next_align;
+        mecs_assert(i_alignment < 256); /* Maximum supported alignment. */
+
+        pointer = ((mecs_uint8_t*)io_data);
+        if (pointer != NULL)
+        {
+            offset = *(((mecs_uint8_t*)io_data) - 1);
+            pointer = (pointer - offset);
+        }
+
+        /* Realloc can return any address but our desired alignement can be at most i_alignment bytes away. */
+        pointer = (mecs_uint8_t*)mecs_realloc(pointer, i_size + i_alignment); 
+        mecs_assert(pointer != NULL);
+        
+        /* Round to the next aligned address. 
+        Store the offset from our allocation to this address in the byte before it so we can retreive the orginal address later. */
+        offset_from_prev_align = (size_t)pointer % i_alignment;
+        offset_to_next_align = i_alignment - offset_from_prev_align;
+        return_pointer = pointer + offset_to_next_align;
+
+        *(mecs_uint8_t*)(return_pointer - 1) = (mecs_uint8_t)offset_to_next_align;
+
+        return (void*)return_pointer;
+    }
+
+    void mecs_free_aligned_impl(void* io_data)
+    {
+        size_t offset;
+        offset = *(((mecs_uint8_t*)io_data) - 1);
+        mecs_free(((mecs_uint8_t*)io_data) - offset);
+    }
+
+/* Allocation helper functions. */
+#define mecs_malloc_aligned(i_size, i_alignment)           mecs_realloc_aligned(NULL, (i_size), (i_alignment))
+#define mecs_malloc_type(T)                                (T*)mecs_realloc(NULL, sizeof(T))
+#define mecs_malloc_arr(T, i_len)                          (T*)mecs_realloc(NULL, (i_len) * sizeof(T))
+#define mecs_realloc_arr(T, i_ptr, i_len)                  (T*)mecs_realloc((i_ptr), (i_len) * sizeof(T))
+
+/* Implement hooks for C++ constructor/destructor. */
+#if !defined(MECS_NO_DEFAULT_REGISTER_CPP_LIFETIME) && defined(__cplusplus)
+    #include <new>
+
+    template<typename T>
+    inline void mecs_ctor_cpp_impl(void* io_data)
+    {
+        ::new(io_data) T;
+    }
+
+    template<typename T>
+    inline void mecs_dtor_cpp_impl(void* io_data)
+    {
+        ((T*)io_data)->~T();
+    }
+
+    template<typename T>
+    inline void mecs_move_and_dtor_cpp_impl(void* io_src_to_move, void* io_dst_to_destruct)
+    {
+        T* dst = (T*)io_dst_to_destruct; 
+        T* src = (T*)io_src_to_move; 
+        *dst = static_cast<T&&>(*src);
+        src->~T();
+    }
+#endif
+
+/* --------------------------------------------------
+Implementation of the core library.
+-------------------------------------------------- */
 
 mecs_entity_t mecs_entity_compose(mecs_entity_gen_t i_generation, mecs_entity_id_t i_id)
 {
@@ -363,7 +668,7 @@ mecs_entity_gen_t mecs_entity_get_generation(mecs_entity_t i_entity)
     return (mecs_entity_gen_t)(i_entity >> MECS_ENTITY_ID_BITCOUNT);
 }
 
-mecs_registry_t* mecs_registry_create(size_t i_component_count_reserve) 
+mecs_registry_t* mecs_registry_create(mecs_component_size_t i_component_count_reserve) 
 {
     mecs_registry_t* registry;
     registry = mecs_malloc_type(mecs_registry_t);
@@ -528,21 +833,11 @@ mecs_component_t mecs_component_register_impl(mecs_registry_t* io_registry, char
     return component;
 }
 
-void mecs_component_register_ctor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_ctor_func_t i_ctor)
+void mecs_component_register_life_time_hooks_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_ctor_func_t i_ctor, mecs_dtor_func_t i_dtor, mecs_move_and_dtor_func_t i_move_and_dtor)
 {
     mecs_assert(io_registry);
     io_registry->components[i_component].ctor_func = i_ctor;
-}
-
-void mecs_component_register_dtor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_dtor_func_t i_dtor)
-{
-    mecs_assert(io_registry);
     io_registry->components[i_component].dtor_func = i_dtor;
-}
-
-void mecs_component_register_move_and_dtor_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_move_and_dtor_func_t i_move_and_dtor)
-{
-    mecs_assert(io_registry);
     io_registry->components[i_component].move_and_dtor_func = i_move_and_dtor;
 }
 
@@ -882,7 +1177,7 @@ mecs_entity_t mecs_entity_create(mecs_registry_t* io_registry)
 
 mecs_bool_t mecs_entity_destroy(mecs_registry_t* io_registry, mecs_entity_t i_entity)
 {
-    size_t i;
+    mecs_component_size_t i;
     mecs_entity_id_t destroyed_id;
     mecs_entity_gen_t destroyed_gen;
     mecs_entity_id_t next_free_entity_id;
@@ -1079,4 +1374,3 @@ void* mecs_query_component_get_impl(mecs_query_it_t* io_query_it, mecs_component
 }
 
 #endif /* MECS_IMPLEMENTATION */
-#endif /* MECS_H */
