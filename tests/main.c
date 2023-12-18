@@ -1,4 +1,5 @@
 #include "../mecs.h"
+#include "../mecs_serialisation.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -7,9 +8,28 @@
 #include <string.h>
 
 #define STRINGIFY(v) #v
-#define test(i_condition) if (!(i_condition)) { printf("Test line %d failed: %s\n", __LINE__, STRINGIFY(i_condition)); assert(0); }
-#define test_str(i_value, i_expected) if (strcmp((i_value), (i_expected)) == 1) { printf("Test line %d failed. Expected: %s, Got: %s\n", __LINE__, (i_expected), (i_value)); assert(0); }
-#define test_uint(i_value, i_expected) if ((i_value) != (i_expected)) { printf("Test line %d failed. Expected: %zu, Got: %zu\n", __LINE__, (size_t)(i_expected), (size_t)(i_value)); assert(0); }
+#define test(i_condition)                                                                           \
+    if (!(i_condition))                                                                             \
+    {                                                                                               \
+        printf("Test line %d failed: %s\n", __LINE__, STRINGIFY(i_condition));                      \
+        assert(0);                                                                                  \
+    }                                                                                               \
+
+#define test_str(i_value, i_expected)                                                               \
+    if (strcmp((i_value), (i_expected)) == 1)                                                       \
+    {                                                                                               \
+        printf("Test line %d failed. Expected: %s, Got: %s\n", __LINE__, (i_expected), (i_value));  \
+        assert(0);                                                                                  \
+    }                                                                                               \
+
+#define test_uint(i_value, i_expected)                                                              \
+    if ((i_value) != (i_expected))                                                                  \
+    {                                                                                               \
+        size_t value = (size_t)(i_value);                                                           \
+        size_t expected = (size_t)(i_expected);                                                     \
+        printf("Test line %d failed. Expected: %zu, Got: %zu\n", __LINE__, expected, value);        \
+        assert(0);                                                                                  \
+    }                                                                                               \
 
 typedef struct 
 {
@@ -130,7 +150,99 @@ void memory_leak_detector_free(void* i_ptr)
 
 typedef struct 
 {
-   uint32_t v; 
+    mecs_uint32_t n; 
+} test_comp_serialise_nested;
+
+typedef struct 
+{
+    mecs_uint32_t v1; 
+    mecs_uint32_t v2; 
+    mecs_uint32_t v3; 
+    test_comp_serialise_nested v4;
+} test_comp_serialise;
+
+ARCHIVE(test_comp_serialise_nested, MECS_TRUE)
+{
+    mecs_uint32_t l = 0;
+    archive_add(mecs_uint32_t, n, 0);
+    archive_add_local(mecs_uint32_t, l, 0);
+}
+
+ARCHIVE(test_comp_serialise, MECS_TRUE)
+{
+    archive_add(mecs_uint32_t, v1, 0);
+    archive_add(mecs_uint32_t, v2, 0);
+    archive_add(mecs_uint32_t, v3, 0);
+    archive_add(test_comp_serialise_nested, v4, 0);
+}
+
+COMPONENT_DECLARE(test_comp_serialise);
+
+
+void test_serialise(void)
+{
+    registry_t* registry0;
+    registry_t* registry1;
+    entity_t entity0;
+    entity_t entity1;
+    test_comp_serialise* comp0;
+    test_comp_serialise* comp1;
+    void* buffer;
+    size_t buffer_size;
+
+    /* Serialisation */
+    registry0 = registry_create(2);
+    COMPONENT_REGISTER(registry0, test_comp_serialise);
+    COMPONENT_REGISTER_SERIALISATION_HOOKS(registry0, test_comp_serialise);
+
+    entity0 = entity_create(registry0);
+    comp0 = component_add(registry0, entity0, test_comp_serialise);
+    comp0->v1 = 1;
+    comp0->v2 = 2;
+    comp0->v3 = 3;
+    comp0->v4.n = 4;
+
+    entity1 = entity_create(registry0);
+    comp1 = component_add(registry0, entity1, test_comp_serialise);
+    comp1->v1 = 5;
+    comp1->v2 = 6;
+    comp1->v3 = 7;
+    comp1->v4.n = 8;
+
+    serialise_registry_binary(registry0, &buffer, &buffer_size);
+
+    /* Deserialisation */
+    registry1 = registry_create(2);
+    COMPONENT_REGISTER(registry1, test_comp_serialise);
+    COMPONENT_REGISTER_SERIALISATION_HOOKS(registry1, test_comp_serialise);
+
+    deserialise_registry_binary(registry1, buffer, buffer_size);
+
+    test_uint(registry1->entities_len, 2);
+    test_uint(entity_get_id(registry1->entities[0]), 0);
+    test_uint(entity_get_id(registry1->entities[1]), 1);
+    test_uint(entity_get_generation(registry1->entities[0]), 0);
+    test_uint(entity_get_generation(registry1->entities[1]), 0);
+    test_uint(component_has(registry1, entity0, test_comp_serialise), MECS_TRUE);
+    test_uint(component_has(registry1, entity1, test_comp_serialise), MECS_TRUE);
+
+    test_uint(component_get(registry1, entity0, test_comp_serialise)->v1, 1);
+    test_uint(component_get(registry1, entity0, test_comp_serialise)->v2, 2);
+    test_uint(component_get(registry1, entity0, test_comp_serialise)->v3, 3);
+    test_uint(component_get(registry1, entity0, test_comp_serialise)->v4.n, 4);
+    test_uint(component_get(registry1, entity1, test_comp_serialise)->v1, 5);
+    test_uint(component_get(registry1, entity1, test_comp_serialise)->v2, 6);
+    test_uint(component_get(registry1, entity1, test_comp_serialise)->v3, 7);
+    test_uint(component_get(registry1, entity1, test_comp_serialise)->v4.n, 8);
+
+    memory_leak_detector_free(buffer);
+    registry_destroy(registry0);
+    registry_destroy(registry1);
+}
+
+typedef struct 
+{
+    uint32_t v; 
 } test_comp_4;
 
 typedef struct 
@@ -444,6 +556,7 @@ int main(void) {
         #if defined(__cplusplus)
         test_constructor_cpp();
         #endif
+        test_serialise();
     }
     memory_leak_detector_shutdown();
     printf("Shutdown");
@@ -454,3 +567,4 @@ int main(void) {
 #define mecs_free(io_data) memory_leak_detector_free(io_data)
 #define MECS_IMPLEMENTATION 
 #include "../mecs.h"
+#include "../mecs_serialisation.h"

@@ -3,7 +3,7 @@ MECS - v1 - Menno Markus 2023 - public domain
 Single header entity component system compatible with C89/C++98 and higher.
 
 Usage: 
-Before you include this file add the following define in *one* C or C++ file to dfine the implementation.
+Before you include this file add the following define in *one* C or C++ file to define the implementation.
 #define MECS_IMPLEMENTATION
 #include "mecs.h"
 
@@ -118,6 +118,11 @@ Table:
 
         Allows to disable the automatic usage of C++ constructors/destructors
         with components. Default undefined.
+    
+    #define MECS_NO_SERIALISATION
+        Must be defined globally.
+
+        Allows to disable support for serialisation and deserialisation of components.
 
 3.) STANDARD LIBRARY COMPILE TIME OPTIONS
 
@@ -207,6 +212,7 @@ V1, 10-Nov-2023, Initial version released.
 #define entity_get_id                           mecs_entity_get_id
 #define entity_get_generation                   mecs_entity_get_generation                                                        
 #define entity_create                           mecs_entity_create                                        
+#define entity_create_array                     mecs_entity_create_array                                        
 #define entity_destroy                          mecs_entity_destroy                                          
 #define entity_is_destroyed                     mecs_entity_is_destroyed                                                    
 
@@ -373,20 +379,25 @@ typedef void(*mecs_move_and_dtor_func_t)(void* io_src_to_move, void* io_dst_to_d
     template<typename T> void mecs_move_and_dtor_cpp_impl(void* io_src_to_move, void* io_dst_to_destruct);
 #endif
 
+/* Hooks serialisation of a type. */
+#if !defined(MECS_NO_SERIALISATION)
+    typedef struct mecs_serialiser_t mecs_serialiser_t;
+    typedef struct mecs_deserialiser_t mecs_deserialiser_t;
+    typedef void(*mecs_serialise_func_t)(mecs_serialiser_t* io_serialiser, void* io_data, size_t i_size);
+    typedef void(*mecs_deserialise_func_t)(mecs_deserialiser_t* io_deserialiser, void* io_data, size_t i_size);
+#endif
+
 typedef struct
 { 
     mecs_sparse_t block[MECS_PAGE_LEN_SPARSE]; 
 } mecs_sparse_block_t;
 
-typedef struct 
+typedef struct mecs_component_store_t mecs_component_store_t;
+struct mecs_component_store_t
 {
     char const* name;
     size_t size;
     size_t alignment;
-    
-    mecs_ctor_func_t ctor_func;
-    mecs_dtor_func_t dtor_func;
-    mecs_move_and_dtor_func_t move_and_dtor_func;
 
     /* Sparse-set mapping entity id to components. 
        Example:
@@ -403,9 +414,21 @@ typedef struct
     mecs_entity_size_t sparse_len;
     mecs_entity_size_t entities_count;
     mecs_entity_size_t components_len;
-} mecs_component_store_t;
+    
+    /* Hooks. */
+    mecs_ctor_func_t ctor_func;
+    mecs_dtor_func_t dtor_func;
+    mecs_move_and_dtor_func_t move_and_dtor_func;
 
-typedef struct 
+    #if !defined(MECS_NO_SERIALISATION)
+        mecs_serialise_func_t serialise_func;
+        mecs_deserialise_func_t deserialise_func;
+        mecs_bool_t is_trivial;
+    #endif
+};
+
+typedef struct mecs_registry_t mecs_registry_t;
+struct mecs_registry_t
 {
     /* Array of component types. Capacity will always try to equal length to minimize memory, but can be used to reserve memory. 
        This is because registring new components should be an infrequent operation, likely only happening during init. */
@@ -424,7 +447,7 @@ typedef struct
     mecs_entity_t* entities;
     mecs_entity_size_t entities_len;
     mecs_entity_size_t entities_cap;
-} mecs_registry_t;
+};
 
 typedef mecs_uint8_t mecs_query_type_t; 
 #define MECS_QUERY_TYPE_WITH     0
@@ -432,14 +455,14 @@ typedef mecs_uint8_t mecs_query_type_t;
 #define MECS_QUERY_TYPE_OPTIONAL 2
 #define MECS_QUERY_MAX_LEN 15
 
-typedef struct 
+typedef struct
 {
     mecs_query_type_t type;
     mecs_component_t component;
 } mecs_query_arg_t;
 
 /* Uncached query. Quick to construct and lives on the stack with no references by the registry but potentially slower to iterate. */
-typedef struct 
+typedef struct
 {
     /* Points into the dense array of the component store that is the base of this iterator. 
        The query argument with the smallest number of entities we have to iterate is used as the base. */
@@ -482,16 +505,16 @@ void*                   mecs_component_get_impl(mecs_registry_t* io_registry, me
 mecs_sparse_t*          mecs_component_get_sparse_element(mecs_component_store_t* i_component_store, mecs_entity_t i_entity);
 mecs_dense_t*           mecs_component_get_dense_element(mecs_component_store_t* i_component_store, mecs_entity_size_t i_index);
 void*                   mecs_component_get_component_element(mecs_component_store_t* i_component_store, mecs_entity_size_t i_index);
-mecs_dense_t*           mecs_component_get_last_dense_element(mecs_component_store_t* i_component_store);
 void*                   mecs_component_get_last_component_element(mecs_component_store_t* i_component_store);
 mecs_bool_t             mecs_component_has_sparse_element(mecs_component_store_t const* i_component_store, mecs_entity_t i_entity);
 mecs_sparse_t*          mecs_component_add_sparse_element(mecs_component_store_t* i_component_store, mecs_entity_t i_entity);
-void*                   mecs_component_add_dense_element(mecs_component_store_t* i_component_store);
+void*                   mecs_component_add_dense_elements(mecs_component_store_t* i_component_store, mecs_entity_size_t i_count);
 
 mecs_entity_t           mecs_entity_compose(mecs_entity_gen_t i_generation, mecs_entity_id_t i_id);
 mecs_entity_id_t        mecs_entity_get_id(mecs_entity_t i_entity);
 mecs_entity_gen_t       mecs_entity_get_generation(mecs_entity_t i_entity);
 mecs_entity_t           mecs_entity_create(mecs_registry_t* io_registry);
+mecs_entity_t*          mecs_entity_create_array(mecs_registry_t* io_registry, mecs_entity_size_t i_count);
 mecs_bool_t             mecs_entity_destroy(mecs_registry_t* io_registry, mecs_entity_t i_entity);
 mecs_bool_t             mecs_entity_is_destroyed(mecs_registry_t* io_registry, mecs_entity_t i_entity);
 
@@ -615,7 +638,6 @@ Implementaton of compiler and platform agnostic standard library types/functions
     }
 
 /* Allocation helper functions. */
-#define mecs_malloc_aligned(i_size, i_alignment)           mecs_realloc_aligned(NULL, (i_size), (i_alignment))
 #define mecs_malloc_type(T)                                (T*)mecs_realloc(NULL, sizeof(T))
 #define mecs_malloc_arr(T, i_len)                          (T*)mecs_realloc(NULL, (i_len) * sizeof(T))
 #define mecs_realloc_arr(T, i_ptr, i_len)                  (T*)mecs_realloc((i_ptr), (i_len) * sizeof(T))
@@ -717,10 +739,10 @@ mecs_registry_t* mecs_registry_create(mecs_component_size_t i_component_count_re
 
 void mecs_registry_destroy(mecs_registry_t* io_registry) 
 {
-    size_t i;
-    size_t block_idx;
-    size_t block_offset;
-    size_t component_idx;
+    mecs_component_size_t i;
+    mecs_entity_size_t block_idx;
+    mecs_entity_size_t block_offset;
+    mecs_entity_size_t component_idx;
     void* component;
     mecs_component_store_t* component_store;
     mecs_assert(io_registry != NULL);
@@ -819,9 +841,6 @@ mecs_component_t mecs_component_register_impl(mecs_registry_t* io_registry, char
     io_registry->components[component].name = i_name;
     io_registry->components[component].size = i_size;
     io_registry->components[component].alignment = i_alignment;
-    io_registry->components[component].ctor_func = i_ctor;
-    io_registry->components[component].dtor_func = i_dtor;
-    io_registry->components[component].move_and_dtor_func = i_move_and_dtor;
 
     io_registry->components[component].sparse = NULL;
     io_registry->components[component].sparse_len = 0;
@@ -830,6 +849,17 @@ mecs_component_t mecs_component_register_impl(mecs_registry_t* io_registry, char
     io_registry->components[component].components = NULL;
     io_registry->components[component].components_len = 0;
     io_registry->components_len += 1;
+
+    io_registry->components[component].ctor_func = i_ctor;
+    io_registry->components[component].dtor_func = i_dtor;
+    io_registry->components[component].move_and_dtor_func = i_move_and_dtor;
+
+    #if !defined(MECS_NO_SERIALISATION)
+        io_registry->components[component].serialise_func = NULL;
+        io_registry->components[component].deserialise_func = NULL;
+        io_registry->components[component].is_trivial = MECS_FALSE;
+    #endif
+
     return component;
 }
 
@@ -852,8 +882,8 @@ void* mecs_component_add_impl(mecs_registry_t* io_registry, mecs_entity_t i_enti
 
     component_store = &io_registry->components[i_component];
     sparse_elem = mecs_component_add_sparse_element(component_store, i_entity);
-    component_elem = mecs_component_add_dense_element(component_store); /* Allocating a new dense elements will grow both the components array and dense array to match. */
-    dense_elem = mecs_component_get_last_dense_element(component_store);
+    component_elem = mecs_component_add_dense_elements(component_store, 1); /* Allocating a new dense elements will grow both the components array and dense array to match. */
+    dense_elem = mecs_component_get_dense_element(component_store, component_store->entities_count - 1);
 
     if (component_store->ctor_func != NULL)
     {
@@ -889,7 +919,7 @@ void mecs_component_remove_impl(mecs_registry_t* io_registry, mecs_entity_t i_en
     if (component_store->entities_count != 1)
     {
         /* Move the last component in place of the component we want to remove. */
-        last_entity_dense_elem = mecs_component_get_last_dense_element(component_store);
+        last_entity_dense_elem = mecs_component_get_dense_element(component_store, component_store->entities_count - 1);
         last_entity_sparse_elem = mecs_component_get_sparse_element(component_store, *last_entity_dense_elem);
         last_entity_component_elem = mecs_component_get_last_component_element(component_store);
 
@@ -973,11 +1003,6 @@ void* mecs_component_get_component_element(mecs_component_store_t* i_component_s
     return component;
 }
 
-mecs_dense_t* mecs_component_get_last_dense_element(mecs_component_store_t* i_component_store)
-{
-    return &i_component_store->dense[i_component_store->entities_count - 1];
-}
-
 void* mecs_component_get_last_component_element(mecs_component_store_t* i_component_store)
 {
     mecs_entity_size_t page_index;
@@ -1041,7 +1066,7 @@ mecs_sparse_t* mecs_component_add_sparse_element(mecs_component_store_t* i_compo
             return NULL;
         }
         sparse_grown_count = (page_index  - i_component_store->sparse_len) + 1;
-        memset(sparse_grown + i_component_store->sparse_len, 0x00, sparse_grown_count  * sizeof(mecs_sparse_block_t*)); /* Initialise all entires to NULL, an empty page. */
+        mecs_memset(sparse_grown + i_component_store->sparse_len, 0x00, sparse_grown_count  * sizeof(mecs_sparse_block_t*)); /* Initialise all entires to NULL, an empty page. */
         i_component_store->sparse = sparse_grown;
         i_component_store->sparse_len = page_index + 1;
     }
@@ -1056,114 +1081,100 @@ mecs_sparse_t* mecs_component_add_sparse_element(mecs_component_store_t* i_compo
             mecs_assert(MECS_FALSE);
             return NULL;
         }
-        memset(sparse_page, 0xFF, sizeof(mecs_sparse_block_t)); /* Initialise all entires MECS_SPARSE_INVALID, indicates there is no component for this entity. */
+        mecs_memset(sparse_page, 0xFF, sizeof(mecs_sparse_block_t)); /* Initialise all entires MECS_SPARSE_INVALID, indicates there is no component for this entity. */
         i_component_store->sparse[page_index] = sparse_page;
     }
 
     return &sparse_page->block[page_offset];
 }
 
-void* mecs_component_add_dense_element(mecs_component_store_t* i_component_store)
+void* mecs_component_add_dense_elements(mecs_component_store_t* i_component_store, mecs_entity_size_t i_count)
 {
-    mecs_entity_size_t components_page_offset;
-    mecs_entity_size_t components_page_index;
+    mecs_entity_size_t first_page_index;
+    mecs_entity_size_t first_page_offset;
+    mecs_entity_size_t last_page_index;
+    mecs_entity_size_t last_page_offset;
+
+    mecs_entity_size_t components_grown_offset;
+    mecs_entity_size_t components_grown_size;
+    void** components_grown;
+    void* components_page;
+    mecs_entity_size_t i;
     mecs_entity_size_t dense_grown_offset;
     mecs_entity_size_t dense_grown_size;
     mecs_dense_t* dense_grown;
 
-    void** components_grown;
-    void* components_page;
     void* component;
     mecs_assert(i_component_store != NULL);
+    mecs_assert(i_count > 0);
 
-    components_page_index = i_component_store->entities_count / MECS_PAGE_LEN_SPARSE;
-    components_page_offset =i_component_store->entities_count % MECS_PAGE_LEN_SPARSE;
+    first_page_index = i_component_store->entities_count / MECS_PAGE_LEN_SPARSE;
+    first_page_offset = i_component_store->entities_count % MECS_PAGE_LEN_SPARSE;
+    last_page_index = (i_component_store->entities_count + i_count - 1) / MECS_PAGE_LEN_SPARSE;
+    last_page_offset = (i_component_store->entities_count + i_count - 1) % MECS_PAGE_LEN_SPARSE;
 
-    /* Allocate a new page for the component if required. */
-    if (components_page_index >= i_component_store->components_len)
+    /* Allocate a new pages for the components if required. */
+    if (last_page_index >= i_component_store->components_len)
     {
-        /* Grow the dense array to match the entries in the components array after allocating a new page. */
-        dense_grown_offset = i_component_store->components_len * MECS_PAGE_LEN_DENSE;
-        dense_grown_size = (i_component_store->components_len + 1) * MECS_PAGE_LEN_DENSE;
+        /* Grow the array of component pages so we can hold the new pages. */
+        components_grown_offset = i_component_store->components_len;
+        components_grown_size = last_page_index + 1;
+        components_grown = mecs_realloc_arr(void*, i_component_store->components, components_grown_size);
+        if (components_grown == NULL)
+        {
+            mecs_assert(MECS_FALSE);
+            return NULL;
+        }
+        i_component_store->components = components_grown;
+        i_component_store->components_len = components_grown_size;
+        mecs_memset(components_grown + components_grown_offset, 0x00, (components_grown_size - components_grown_offset) * sizeof(void*)); /* Initialise all pages to NULL. */
+
+        /* Allocate new component pages. */
+        for (i = components_grown_offset; i < components_grown_size; ++i)
+        {
+            components_page = mecs_realloc_aligned(i_component_store->components[i], MECS_PAGE_LEN_DENSE * i_component_store->size, i_component_store->alignment);
+            if (components_page == NULL)
+            {
+                mecs_assert(MECS_FALSE);
+                return NULL;
+            }
+            i_component_store->components[i] = components_page;
+        }
+
+        /* Grow the dense array to match the entries in the components array. */
+        dense_grown_offset = components_grown_offset * MECS_PAGE_LEN_DENSE;
+        dense_grown_size = components_grown_size * MECS_PAGE_LEN_DENSE;
         dense_grown = mecs_realloc_arr(mecs_dense_t, i_component_store->dense, dense_grown_size);
         if (dense_grown == NULL)
         {
             mecs_assert(MECS_FALSE);
             return NULL;
         }
-        memset(dense_grown + dense_grown_offset, 0xFF, MECS_PAGE_LEN_DENSE * sizeof(mecs_dense_t)); /* Initialise all entires to invalid entity. */
+        mecs_memset(dense_grown + dense_grown_offset, 0xFF, (dense_grown_size - dense_grown_offset) * sizeof(mecs_dense_t)); /* Initialise all entiries to invalid entity. */
         i_component_store->dense = dense_grown;
-
-        /* Allocate a new component page. */
-        components_page = mecs_malloc_aligned(MECS_PAGE_LEN_DENSE * i_component_store->size, i_component_store->alignment);
-        if (components_page == NULL)
-        {
-            mecs_assert(MECS_FALSE);
-            return NULL;
-        }
-        
-        /* Grow the array of component pages so we can hold the new page. */
-        components_grown = mecs_realloc_arr(void*, i_component_store->components, i_component_store->components_len + 1);
-        if (components_grown == NULL)
-        {
-            mecs_free(components_page);
-            mecs_assert(MECS_FALSE);
-            return NULL;
-        }
-        i_component_store->components = components_grown;
-        i_component_store->components[i_component_store->components_len] = components_page;
-        i_component_store->components_len += 1;
     }
-    components_page = i_component_store->components[components_page_index];
 
-    component = (void*)(((char*)components_page) + (components_page_offset * i_component_store->size));
-    i_component_store->entities_count += 1;
+    components_page = i_component_store->components[first_page_index];
+    component = (void*)(((char*)components_page) + (first_page_offset * i_component_store->size));
+    i_component_store->entities_count += i_count;
     return component;
 }
 
-mecs_entity_t mecs_entity_create(mecs_registry_t* io_registry)
+mecs_entity_t* mecs_entity_create_array(mecs_registry_t* io_registry, mecs_entity_size_t i_count)
 {
     mecs_entity_id_t free_entity_id;
     mecs_entity_gen_t free_entity_gen;
-    mecs_entity_t* entities_grown;
+
     mecs_entity_size_t new_capacity;
+    mecs_entity_t* entities_grown;
+    mecs_entity_size_t entities_grown_offset;
+    mecs_entity_size_t i;
     mecs_entity_t entity;
     mecs_assert(io_registry != NULL);
-    
+    mecs_assert(i_count != 0);
+
     free_entity_id = mecs_entity_get_id(io_registry->next_free_entity);
-    if (free_entity_id == MECS_ENTITY_ID_INVALID)
-    {
-        /* There is no entity id we can re-use so create a new entity id. This potenially involves allocating more memory. */
-
-        if (io_registry->entities_len >= io_registry->entities_cap)
-        {
-            /* Double array capcity to guarantee O(1) amortized. */
-            if (io_registry->entities_cap <= ((mecs_entity_size_t)-1) - io_registry->entities_cap)
-            {
-                new_capacity = io_registry->entities_cap * 2;
-            }
-            else 
-            {
-                new_capacity = (mecs_entity_size_t)-1; /* Ensure we don't overflow and utalise the full range of available ids. */
-            }
-
-            entities_grown = mecs_realloc_arr(mecs_entity_t, io_registry->entities, new_capacity);
-            if (entities_grown == NULL)
-            {
-                mecs_assert(MECS_FALSE);
-                return MECS_ENTITY_INVALID;
-            }
-            mecs_memset(entities_grown + io_registry->entities_cap, 0x00, sizeof(mecs_entity_t));
-            io_registry->entities = entities_grown;
-            io_registry->entities_cap = new_capacity;
-        }
-
-        entity = (mecs_entity_t)io_registry->entities_len;
-        io_registry->entities[(mecs_entity_id_t)entity] = entity; /* Genaration is 0 so can use as index directly. */
-        io_registry->entities_len += 1;
-        return entity;
-    }
-    else 
+    if (i_count == 1 && free_entity_id != MECS_ENTITY_ID_INVALID)
     {
         /* Re-use an entity id by popping an entry of the implicit linked list of destroyed entities. */
         free_entity_gen = mecs_entity_get_generation(io_registry->entities[free_entity_id]);
@@ -1171,8 +1182,70 @@ mecs_entity_t mecs_entity_create(mecs_registry_t* io_registry)
         entity = mecs_entity_compose(free_entity_gen, free_entity_id);
 
         io_registry->entities[free_entity_id] = entity;
-        return entity;
+        return &io_registry->entities[free_entity_id];
+
     }
+    else
+    {
+        if (io_registry->entities_cap - io_registry->entities_len < i_count)
+        {
+            /* Double array capcity to guarantee O(1) amortized. 
+               Ensure we don't overflow and utalise the full range of available ids. */
+            new_capacity = io_registry->entities_cap;
+            while (new_capacity - io_registry->entities_cap < i_count)
+            {
+                if (new_capacity <= ((mecs_entity_size_t)-1) - new_capacity)
+                {
+                    new_capacity = new_capacity * 2;
+                }
+                else
+                {
+                    new_capacity = (mecs_entity_size_t)-1;
+                    break;
+                }
+            }
+
+            /* If we were unable to allocate enough capacity, abort. */
+            if (new_capacity - io_registry->entities_cap < i_count)
+            {
+                mecs_assert(MECS_FALSE);
+                return NULL;
+            }
+
+            entities_grown = mecs_realloc_arr(mecs_entity_t, io_registry->entities, new_capacity);
+            if (entities_grown == NULL)
+            {
+                mecs_assert(MECS_FALSE);
+                return NULL;
+            }
+
+            mecs_memset(entities_grown + io_registry->entities_cap, 0x00, sizeof(mecs_entity_t));
+            io_registry->entities = entities_grown;
+            io_registry->entities_cap = new_capacity;
+        }
+
+        entities_grown_offset = io_registry->entities_len;
+        for (i = 0; i < i_count; ++i)
+        {
+            entity = (mecs_entity_t)io_registry->entities_len;
+            io_registry->entities[(mecs_entity_id_t)entity] = entity; /* Genaration is 0 so can use as index directly. */
+            io_registry->entities_len += 1;
+        }
+
+        return &io_registry->entities[entities_grown_offset];
+    }
+}
+
+mecs_entity_t mecs_entity_create(mecs_registry_t* io_registry)
+{
+    mecs_entity_t* entity;
+    entity = mecs_entity_create_array(io_registry, 1);
+    if (entity == NULL)
+    {
+        mecs_assert(MECS_FALSE);
+        return MECS_ENTITY_INVALID;
+    }
+    return *entity;
 }
 
 mecs_bool_t mecs_entity_destroy(mecs_registry_t* io_registry, mecs_entity_t i_entity)
