@@ -56,6 +56,9 @@ Table:
 #define serialise_component_store               mecs_serialise_component_store
 #define deserialise_component_store             mecs_deserialise_component_store
 
+#define SERIALISATION_IS_TRIVIAL_DECLARE        MECS_SERIALISATION_IS_TRIVIAL_DECLARE
+#define serialisation_is_trivial                mecs_serialisation_is_trivial
+
 #define ARCHIVE_DECLARE                         MECS_ARCHIVE_DECLARE
 #define ARCHIVE_DEFINE                          MECS_ARCHIVE_DEFINE
 #define ARCHIVE                                 MECS_ARCHIVE
@@ -149,151 +152,180 @@ typedef union
     mecs_deserialiser_t* deserialiser;
 } mecs_serialisation_archive_t;
 
+#if defined(__cplusplus)
+    #define MECS_FUNC_NAME_SERIALISE(T_type) mecs__serialise
+    #define MECS_FUNC_NAME_DESERIALISE(T_type) mecs__deserialise
+    #define MECS_FUNC_NAME_ARCHIVE(T_type) mecs__archive
+
+    template<class T_type>
+    struct mecs_serialisation_is_trivial_impl;
+
+    #define mecs_serialisation_is_trivial(T_type)                                                                           \
+        mecs_serialisation_is_trivial_impl<T_type>::v                                                                       \
+
+    #define MECS_SERIALISATION_IS_TRIVIAL_DECLARE(T_type, i_is_trivial)                                                     \
+        template<>                                                                                                          \
+        struct mecs_serialisation_is_trivial_impl<T_type> { enum { v = i_is_trivial }; }                \
+
+#else 
+    #define MECS_FUNC_NAME_SERIALISE(T_type) mecs__serialise_##T_type
+    #define MECS_FUNC_NAME_DESERIALISE(T_type) mecs__deserialise_##T_type
+    #define MECS_FUNC_NAME_ARCHIVE(T_type) mecs__archive_##T_type
+
+    #define mecs_serialisation_is_trivial(T_type)                                                                           \
+        mecs__is_trivial_##T_type                                                                                           \
+
+    #define MECS_SERIALISATION_IS_TRIVIAL_DECLARE(T_type, i_is_trivial)                                                     \
+        mecs_bool_t mecs__is_trivial_##T_type = i_is_trivial                                                                \
+
+#endif
+
 /* Archive macros allow to define both serialise and deserialise methods as one function. */
-#define MECS_ARCHIVE_DECLARE(T_type, i_is_trivial)                                                                      \
-    mecs_bool_t mecs__is_trivial_##T_type = i_is_trivial;                                                               \
-    void mecs__serialise_##T_type##(mecs_serialiser_t* io_archive, T_type* io_data);                                    \
-    void mecs__deserialise_##T_type##(mecs_deserialiser_t* io_archive, T_type* io_data);                                \
-    void mecs__archive_##T_type##(mecs_serialisation_archive_t io_archive, T_type* io_data, mecs_bool_t is_writer)      \
+#define MECS_ARCHIVE_DECLARE(T_type, i_is_trivial)                                                                          \
+    MECS_SERIALISATION_IS_TRIVIAL_DECLARE(T_type, i_is_trivial);                                                            \
+    void MECS_FUNC_NAME_SERIALISE(T_type)(mecs_serialiser_t* io_archive, T_type* io_data);                                  \
+    void MECS_FUNC_NAME_DESERIALISE(T_type)(mecs_deserialiser_t* io_archive, T_type* io_data);                              \
+    void MECS_FUNC_NAME_ARCHIVE(T_type)(mecs_serialisation_archive_t io_archive, T_type* io_data, mecs_bool_t is_writer)    \
 
-#define MECS_ARCHIVE_DEFINE(T_type)                                                                                     \
-    void mecs__serialise_##T_type##(mecs_serialiser_t* io_serialiser, T_type* io_data)                                  \
-    {                                                                                                                   \
-        mecs_serialisation_archive_t archive;                                                                           \
-        archive.serialiser = io_serialiser;                                                                             \
-        mecs__archive_##T_type##(archive, io_data, MECS_TRUE);                                                          \
-    }                                                                                                                   \
-                                                                                                                        \
-    void mecs__deserialise_##T_type##(mecs_deserialiser_t* io_deserialiser, T_type* io_data)                            \
-    {                                                                                                                   \
-        mecs_serialisation_archive_t archive;                                                                           \
-        archive.deserialiser = io_deserialiser;                                                                         \
-        mecs__archive_##T_type##(archive, io_data, MECS_FALSE);                                                         \
-    }                                                                                                                   \
-                                                                                                                        \
-    void mecs__archive_##T_type##(mecs_serialisation_archive_t io_archive, T_type* io_data, mecs_bool_t i_is_writer)    \
+#define MECS_ARCHIVE_DEFINE(T_type)                                                                                         \
+    void MECS_FUNC_NAME_SERIALISE(T_type)(mecs_serialiser_t* io_serialiser, T_type* io_data)                                \
+    {                                                                                                                       \
+        mecs_serialisation_archive_t archive;                                                                               \
+        archive.serialiser = io_serialiser;                                                                                 \
+        MECS_FUNC_NAME_ARCHIVE(T_type)(archive, io_data, MECS_TRUE);                                                        \
+    }                                                                                                                       \
+                                                                                                                            \
+    void MECS_FUNC_NAME_DESERIALISE(T_type)(mecs_deserialiser_t* io_deserialiser, T_type* io_data)                          \
+    {                                                                                                                       \
+        mecs_serialisation_archive_t archive;                                                                               \
+        archive.deserialiser = io_deserialiser;                                                                             \
+        MECS_FUNC_NAME_ARCHIVE(T_type)(archive, io_data, MECS_FALSE);                                                       \
+    }                                                                                                                       \
+                                                                                                                            \
+    void MECS_FUNC_NAME_ARCHIVE(T_type)(mecs_serialisation_archive_t io_archive, T_type* io_data, mecs_bool_t i_is_writer)  \
 
-#define MECS_ARCHIVE(T_type, i_is_trivial)                                                                              \
-    MECS_ARCHIVE_DECLARE(T_type, i_is_trivial);                                                                         \
-    MECS_ARCHIVE_DEFINE(T_type)                                                                                         \
+#define MECS_ARCHIVE(T_type, i_is_trivial)                                                                                  \
+    MECS_ARCHIVE_DECLARE(T_type, i_is_trivial);                                                                             \
+    MECS_ARCHIVE_DEFINE(T_type)                                                                                             \
 
 
 /* Serialise/deserialise macros allow to define both serialise and deserialise methods as seprate functions. */
-#define MECS_IS_TRIVIAL_DECLARE(T_type, i_is_trivial)                                                                   \
-    mecs_bool_t mecs__is_trivial_##T_type = i_is_trivial;                                                               \
+#define MECS_SERIALISE_DECLARE(T_type)                                                                                      \
+    void MECS_FUNC_NAME_SERIALISE(T_type)(mecs_serialiser_t* io_serialiser, T_type* io_data)                                \
 
-#define MECS_SERIALISE_DECLARE(T_type)                                                                                  \
-    void mecs__serialise_##T_type##(mecs_serialiser_t* io_serialiser, T_type* io_data)                                  \
+#define MECS_DESERIALISE_DECLARE(T_type)                                                                                    \
+    void MECS_FUNC_NAME_DESERIALISE(T_type)(mecs_deserialiser_t* io_deserialiser, T_type* io_data)                          \
 
-#define MECS_DESERIALISE_DECLARE(T_type)                                                                                \
-    void mecs__deserialise_##T_type##(mecs_deserialiser_t* io_deserialiser, T_type* io_data)                            \
+#define MECS_SERIALISE_DEFINE(T_type)                                                                                       \
+    void MECS_FUNC_NAME_SERIALISE(T_type)(mecs_serialiser_t* io_serialiser, T_type* io_data)                                \
 
-#define MECS_SERIALISE_DEFINE(T_type)                                                                                   \
-    void mecs__serialise_##T_type##(mecs_serialiser_t* io_serialiser, T_type* io_data)                                  \
+#define MECS_DESERIALISE_DEFINE(T_type)                                                                                     \
+    void MECS_FUNC_NAME_DESERIALISE(T_type)(mecs_deserialiser_t* io_deserialiser, T_type* io_data)                          \
 
-#define MECS_DESERIALISE_DEFINE(T_type)                                                                                 \
-    void mecs__deserialise_##T_type##(mecs_deserialiser_t* io_deserialiser, T_type* io_data)                            \
+#define MECS_SERIALISE(T_type)                                                                                              \
+    MECS_SERIALISE_DECLARE(T_type);                                                                                         \
+    MECS_SERIALISE_DEFINE(T_type)                                                                                           \
 
-#define MECS_SERIALISE(T_type)                                                                                          \
-    MECS_SERIALISE_DECLARE(T_type);                                                                                     \
-    MECS_SERIALISE_DEFINE(T_type)                                                                                       \
-
-#define MECS_DESERIALISE(T_type)                                                                                        \
-    MECS_DESERIALISE_DECLARE(T_type);                                                                                   \
-    MECS_DESERIALISE_DEFINE(T_type)                                                                                     \
+#define MECS_DESERIALISE(T_type)                                                                                            \
+    MECS_DESERIALISE_DECLARE(T_type);                                                                                       \
+    MECS_DESERIALISE_DEFINE(T_type)                                                                                         \
 
 
 /* Helper methods for serialising and deserialising values. */
-#define mecs_archive_add(T_fieldType, i_fieldName, i_versionAdded)                                                      \
-    if (i_is_writer)                                                                                                    \
-    {                                                                                                                   \
-        if (io_archive.serialiser->version >= i_versionAdded)                                                           \
-        {                                                                                                               \
-            mecs__serialise_##T_fieldType##(io_archive.serialiser, &(io_data->i_fieldName));                            \
-        }                                                                                                               \
-    }                                                                                                                   \
-    else                                                                                                                \
-    {                                                                                                                   \
-        if (io_archive.deserialiser->version >= i_versionAdded)                                                         \
-        {                                                                                                               \
-            mecs__deserialise_##T_fieldType##(io_archive.deserialiser, &(io_data->i_fieldName));                        \
-        }                                                                                                               \
-    }                                                                                                                   \
+#define mecs_archive_add(T_fieldType, i_fieldName, i_versionAdded)                                                          \
+    if (i_is_writer)                                                                                                        \
+    {                                                                                                                       \
+        if (io_archive.serialiser->version >= i_versionAdded)                                                               \
+        {                                                                                                                   \
+            MECS_FUNC_NAME_SERIALISE(T_fieldType)(io_archive.serialiser, &(io_data->i_fieldName));                          \
+        }                                                                                                                   \
+    }                                                                                                                       \
+    else                                                                                                                    \
+    {                                                                                                                       \
+        if (io_archive.deserialiser->version >= i_versionAdded)                                                             \
+        {                                                                                                                   \
+            MECS_FUNC_NAME_DESERIALISE(T_fieldType)(io_archive.deserialiser, &(io_data->i_fieldName));                      \
+        }                                                                                                                   \
+    }                                                                                                                       \
 
-#define mecs_archive_rem(T_fieldType, i_fieldName, i_versionAdded, i_versionRemoved)                                    \
-    if (i_is_writer)                                                                                                    \
-    {                                                                                                                   \
-        if (io_archive.serialiser->version >= i_versionAdded && io_archive.serialiser->version < i_versionRemoved)      \
-        {                                                                                                               \
-            T_fieldType temp;                                                                                           \
-            mecs__serialise_##T_fieldType##(io_archive.serialiser, &temp);                                              \
-        }                                                                                                               \
-    }                                                                                                                   \
-    else                                                                                                                \
-    {                                                                                                                   \
-        if (io_archive.deserialiser->version >= i_versionAdded && io_archive.deserialiser->version < i_versionRemoved)  \
-        {                                                                                                               \
-            T_fieldType temp;                                                                                           \
-            mecs__deserialise_##T_fieldType##(io_archive.deserialiser, &temp);                                          \
-        }                                                                                                               \
-    }                                                                                                                   \
+#define mecs_archive_rem(T_fieldType, i_fieldName, i_versionAdded, i_versionRemoved)                                        \
+    if (i_is_writer)                                                                                                        \
+    {                                                                                                                       \
+        if (io_archive.serialiser->version >= i_versionAdded && io_archive.serialiser->version < i_versionRemoved)          \
+        {                                                                                                                   \
+            T_fieldType temp;                                                                                               \
+            MECS_FUNC_NAME_SERIALISE(T_fieldType)(io_archive.serialiser, &temp);                                            \
+        }                                                                                                                   \
+    }                                                                                                                       \
+    else                                                                                                                    \
+    {                                                                                                                       \
+        if (io_archive.deserialiser->version >= i_versionAdded && io_archive.deserialiser->version < i_versionRemoved)      \
+        {                                                                                                                   \
+            T_fieldType temp;                                                                                               \
+            MECS_FUNC_NAME_DESERIALISE(T_fieldType)(io_archive.deserialiser, &temp);                                        \
+        }                                                                                                                   \
+    }                                                                                                                       \
 
-#define mecs_archive_add_local(T_type, i_name, i_versionAdded)                                                          \
-    if (i_is_writer)                                                                                                    \
-    {                                                                                                                   \
-        if (io_archive.serialiser->version >= i_versionAdded)                                                           \
-        {                                                                                                               \
-            mecs__serialise_##T_type##(io_archive.serialiser, &(i_name));                                               \
-        }                                                                                                               \
-    }                                                                                                                   \
-    else                                                                                                                \
-    {                                                                                                                   \
-        if (io_archive.deserialiser->version >= i_versionAdded)                                                         \
-        {                                                                                                               \
-            mecs__deserialise_##T_type##(io_archive.deserialiser, &(i_name));                                           \
-        }                                                                                                               \
-    }                                                                                                                   \
+#define mecs_archive_add_local(T_type, i_name, i_versionAdded)                                                              \
+    if (i_is_writer)                                                                                                        \
+    {                                                                                                                       \
+        if (io_archive.serialiser->version >= i_versionAdded)                                                               \
+        {                                                                                                                   \
+            MECS_FUNC_NAME_SERIALISE(T_type)(io_archive.serialiser, &(i_name));                                             \
+        }                                                                                                                   \
+    }                                                                                                                       \
+    else                                                                                                                    \
+    {                                                                                                                       \
+        if (io_archive.deserialiser->version >= i_versionAdded)                                                             \
+        {                                                                                                                   \
+            MECS_FUNC_NAME_DESERIALISE(T_type)(io_archive.deserialiser, &(i_name));                                         \
+        }                                                                                                                   \
+    }                                                                                                                       \
 
-#define mecs_archive_rem_local(T_type, i_name, i_versionAdded, i_versionRemoved)                                        \
-    if (i_is_writer)                                                                                                    \
-    {                                                                                                                   \
-        if (io_archive.serialiser->version >= i_versionAdded && io_archive.serialiser->version < i_versionRemoved)      \
-        {                                                                                                               \
-            T_type temp;                                                                                                \
-            mecs__serialise_##T_type##(io_archive.serialiser, &(i_name));                                               \
-        }                                                                                                               \
-    }                                                                                                                   \
-    else                                                                                                                \
-    {                                                                                                                   \
-        if (io_archive.deserialiser->version >= i_versionAdded && io_archive.deserialiser->version < i_versionRemoved)  \
-        {                                                                                                               \
-            T_type temp;                                                                                                \
-            mecs__deserialise_##T_type##(io_archive.deserialiser, &(i_name));                                           \
-        }                                                                                                               \
-    }                                                                                                                   \
+#define mecs_archive_rem_local(T_type, i_name, i_versionAdded, i_versionRemoved)                                            \
+    if (i_is_writer)                                                                                                        \
+    {                                                                                                                       \
+        if (io_archive.serialiser->version >= i_versionAdded && io_archive.serialiser->version < i_versionRemoved)          \
+        {                                                                                                                   \
+            T_type temp;                                                                                                    \
+            MECS_FUNC_NAME_SERIALISE(T_type)(io_archive.serialiser, &(i_name));                                             \
+        }                                                                                                                   \
+    }                                                                                                                       \
+    else                                                                                                                    \
+    {                                                                                                                       \
+        if (io_archive.deserialiser->version >= i_versionAdded && io_archive.deserialiser->version < i_versionRemoved)      \
+        {                                                                                                                   \
+            T_type temp;                                                                                                    \
+            MECS_FUNC_NAME_DESERIALISE(T_type)(io_archive.deserialiser, &(i_name));                                         \
+        }                                                                                                                   \
+    }                                                                                                                       \
 
 /* --------------------------------------------------
 Core serialisation types
 -------------------------------------------------- */
-#define MECS_ARCHIVE_CORE_TYPE(T_type)                                                                                  \
-    MECS_ARCHIVE(T_type, MECS_TRUE)                                                                                     \
-    {                                                                                                                   \
-        if (i_is_writer)                                                                                                \
-        {                                                                                                               \
-            io_archive.serialiser->write_func(io_archive.serialiser, io_data, sizeof(*io_data));                        \
-        }                                                                                                               \
-        else                                                                                                            \
-        {                                                                                                               \
-            io_archive.deserialiser->read_func(io_archive.deserialiser, io_data, sizeof(*io_data));                     \
-        }                                                                                                               \
-    }                                                                                                                   \
+#define MECS_ARCHIVE_CORE_TYPE(T_type)                                                                                      \
+    MECS_ARCHIVE(T_type, MECS_TRUE)                                                                                         \
+    {                                                                                                                       \
+        if (i_is_writer)                                                                                                    \
+        {                                                                                                                   \
+            io_archive.serialiser->write_func(io_archive.serialiser, io_data, sizeof(*io_data));                            \
+        }                                                                                                                   \
+        else                                                                                                                \
+        {                                                                                                                   \
+            io_archive.deserialiser->read_func(io_archive.deserialiser, io_data, sizeof(*io_data));                         \
+        }                                                                                                                   \
+    }                                                                                                                       \
 
 #if !defined(MECS_SERIALISATION_NO_SUPPORT_MECS_TYPES)
+    #if !defined(__cplusplus) || defined(MECS_SERIALISATION_NO_SUPPORT_STD_TYPES) /* If we are compiling C++ and want to support std types skip these to prevent redefinition. */
         MECS_ARCHIVE_CORE_TYPE(mecs_bool_t)
         MECS_ARCHIVE_CORE_TYPE(mecs_uint8_t)
         MECS_ARCHIVE_CORE_TYPE(mecs_uint16_t)
         MECS_ARCHIVE_CORE_TYPE(mecs_uint32_t)
+        MECS_ARCHIVE_CORE_TYPE(mecs_uint64_t)
+    #endif
 #endif
+
 #if !defined(MECS_SERIALISATION_NO_SUPPORT_STD_TYPES)
     #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L /* C99 */
         #include <stdint.h>
@@ -306,34 +338,43 @@ Core serialisation types
         MECS_ARCHIVE_CORE_TYPE(uint32_t)
         MECS_ARCHIVE_CORE_TYPE(int64_t)
         MECS_ARCHIVE_CORE_TYPE(uint64_t)
-    #elif defined(_cplusplus) && _cplusplus >= 201103L /* C++11 */
+    #elif defined(__cplusplus) && __cplusplus >= 201103L /* C++11 */
         #include <cstdint>
         MECS_ARCHIVE_CORE_TYPE(bool)
-        /* TODO std:: types */
+        MECS_ARCHIVE_CORE_TYPE(std::int8_t)
+        MECS_ARCHIVE_CORE_TYPE(std::uint8_t)
+        MECS_ARCHIVE_CORE_TYPE(std::int16_t)
+        MECS_ARCHIVE_CORE_TYPE(std::uint16_t)
+        MECS_ARCHIVE_CORE_TYPE(std::int32_t)
+        MECS_ARCHIVE_CORE_TYPE(std::uint32_t)
+        MECS_ARCHIVE_CORE_TYPE(std::int64_t)
+        MECS_ARCHIVE_CORE_TYPE(std::uint64_t)
     #endif
 #endif
 
 typedef struct mecs_registry_t mecs_registry_t;
 typedef struct mecs_component_store_t mecs_component_store_t;
 
+    
+
 #define MECS_COMPONENT_REGISTER_SERIALISATION_HOOKS(io_registry, T_component) mecs_component_register_serialisation_hooks_impl( \
     (io_registry),                                                                                                              \
     MECS_COMPONENT_IDENT(T_component),                                                                                          \
-    (mecs_serialise_func_t)(mecs__serialise_##T_component),                                                                     \
-    (mecs_deserialise_func_t)(mecs__deserialise_##T_component),                                                                 \
-    (mecs__is_trivial_##T_component))                                                                                           \
+    (mecs_serialise_func_t)((void(*)(mecs_serialiser_t* io_serialiser, T_component* io_data))(MECS_FUNC_NAME_SERIALISE(T_component))),                                                             \
+    (mecs_deserialise_func_t)((void(*)(mecs_deserialiser_t* io_deserialiser, T_component* io_data))(MECS_FUNC_NAME_DESERIALISE(T_component))),                                                             \
+    mecs_serialisation_is_trivial(T_component))                                                                                 \
 
 #define MECS_COMPONENT_REGISTER_SERIALISE_HOOK(io_registry, T_component) mecs_component_register_serialise_hook_impl(           \
     (io_registry),                                                                                                              \
     MECS_COMPONENT_IDENT(T_component),                                                                                          \
-    (mecs_serialise_func_t)(mecs__serialise_##T_component),                                                                     \
-    (mecs__is_trivial_##T_component))                                                                                           \
+    (mecs_serialise_func_t)((void(*)(mecs_serialiser_t* io_serialiser, T_component* io_data))(MECS_FUNC_NAME_SERIALISE(T_component))),                                                             \
+    mecs_serialisation_is_trivial(T_component))                                                                                 \
 
 #define MECS_COMPONENT_REGISTER_DESERIALISE_HOOK(io_registry, T_component) mecs_component_register_deserialise_hook_impl(       \
     (io_registry),                                                                                                              \
     MECS_COMPONENT_IDENT(T_component),                                                                                          \
-    (mecs_deserialise_func_t)(mecs__deserialise_##T_component),                                                                 \
-    (mecs__is_trivial_##T_component))                                                                                           \
+    (mecs_deserialise_func_t)((void(*)(mecs_deserialiser_t* io_deserialiser, T_component* io_data))(MECS_FUNC_NAME_DESERIALISE(T_component))),                                                             \
+    mecs_serialisation_is_trivial(T_component))                                                                                 \
 
 void mecs_component_register_serialisation_hooks_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_serialise_func_t i_serialise, mecs_deserialise_func_t i_deserialise, mecs_bool_t i_is_trivial);
 void mecs_component_register_serialise_hook_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_serialise_func_t i_serialise, mecs_bool_t i_is_trivial);
@@ -352,7 +393,7 @@ Unversioned binary serialisation
 typedef struct
 {
     mecs_serialiser_t base;
-    char* data;
+    void* data;
     size_t capacity;
     size_t size;
 } mecs_serialiser_binary_t;
@@ -360,7 +401,7 @@ typedef struct
 typedef struct
 {
     mecs_deserialiser_t base;
-    char* data;
+    void* data;
     size_t size;
     size_t position;
 } mecs_deserialiser_binary_t;
@@ -816,7 +857,7 @@ void mecs_serialiser_binary_write_func(mecs_serialiser_t* io_serialiser, void co
 
     } 
 
-    memcpy(serialiser->data + serialiser->size, i_data, i_size);
+    memcpy((char*)serialiser->data + serialiser->size, i_data, i_size);
     serialiser->size += i_size;
 }
 
@@ -845,7 +886,7 @@ void mecs_deserialiser_binary_read_func(mecs_deserialiser_t* io_deserialiser, vo
         return;
     }
 
-    memcpy(o_data, deserialiser->data + deserialiser->position, i_size);
+    memcpy(o_data, (char*)deserialiser->data + deserialiser->position, i_size);
     deserialiser->position += i_size;
 }
 

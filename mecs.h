@@ -237,24 +237,27 @@ Definition of compiler and platform agnostic standard library types/functions.
 -------------------------------------------------- */
 
 /* Provide custom or default implementation of stdint.h fixed size types. */
-#if defined(mecs_uint8_t) || defined(mecs_uint16_t) || defined(mecs_uint32_t)
-    #if !defined(mecs_uint8_t) || !defined(mecs_uint16_t) || !defined(mecs_uint32_t)
-        #error "You must define all of mecs_uint8_t, mecs_uint16_t and mecs_uint32_t."
+#if defined(mecs_uint8_t) || defined(mecs_uint16_t) || defined(mecs_uint32_t) || defined(mecs_uint64_t)
+    #if !defined(mecs_uint8_t) || !defined(mecs_uint16_t) || !defined(mecs_uint32_t) || !defined(mecs_uint64_t)
+        #error "You must define all of mecs_uint8_t, mecs_uint16_t, mecs_uint32_t and mecs_uint64_t."
     #endif
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L /* C99 */
     #include <stdint.h>
-    typedef uint8_t         mecs_uint8_t;
-    typedef uint16_t        mecs_uint16_t;
-    typedef uint32_t        mecs_uint32_t;
-#elif defined(_cplusplus) && _cplusplus >= 201103L /* C++11 */
+    typedef uint8_t             mecs_uint8_t;
+    typedef uint16_t            mecs_uint16_t;
+    typedef uint32_t            mecs_uint32_t;
+    typedef uint64_t            mecs_uint64_t;
+#elif defined(__cplusplus) && __cplusplus >= 201103L /* C++11 */
     #include <cstdint>
-    typedef std::uint8_t    mecs_uint8_t;
-    typedef std::uint16_t   mecs_uint16_t;
-    typedef std::uint32_t   mecs_uint32_t;
+    typedef std::uint8_t        mecs_uint8_t;
+    typedef std::uint16_t       mecs_uint16_t;
+    typedef std::uint32_t       mecs_uint32_t;
+    typedef std::uint64_t       mecs_uint64_t;
 #else
-    typedef unsigned char   mecs_uint8_t;
-    typedef unsigned short  mecs_uint16_t;
-    typedef unsigned long   mecs_uint32_t;
+    typedef unsigned char       mecs_uint8_t;
+    typedef unsigned short      mecs_uint16_t;
+    typedef unsigned long       mecs_uint32_t;
+    typedef unsigned long long  mecs_uint64_t;
 #endif
 
 /* Provide custom or default implementation for booleans. */
@@ -262,7 +265,7 @@ Definition of compiler and platform agnostic standard library types/functions.
     #if !defined(mecs_bool_t) || !defined(MECS_TRUE) || !defined(MECS_FALSE)
         #error "You must define all of mecs_bool_t, MECS_TRUE and MECS_FALSE."
     #endif
-#elif defined(_cplusplus) || (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) /* C++ or C99 */
+#elif defined(__cplusplus) || (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) /* C++ or C99 */
     typedef bool            mecs_bool_t;
     #define MECS_TRUE       true
     #define MECS_FALSE      false
@@ -274,7 +277,7 @@ Definition of compiler and platform agnostic standard library types/functions.
 
 /* Alignment. Provide custom implementation of alignof or default implementation which attempts to grab the most accurate implementation. */
 #if !defined(mecs_alignof)
-    #if defined(__cplusplus) && _cplusplus >= 201103L /* C++11 */
+    #if defined(__cplusplus) && __cplusplus >= 201103L /* C++11 */
         #define mecs_alignof(T)     ((size_t)alignof(T))
     #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L /* C11 */
         #define mecs_alignof(T)     ((size_t)_Alignof(T))
@@ -385,11 +388,12 @@ typedef void(*mecs_move_and_dtor_func_t)(void* io_src_to_move, void* io_dst_to_d
     typedef struct mecs_deserialiser_t mecs_deserialiser_t;
     typedef void(*mecs_serialise_func_t)(mecs_serialiser_t* io_serialiser, void* io_data, size_t i_size);
     typedef void(*mecs_deserialise_func_t)(mecs_deserialiser_t* io_deserialiser, void* io_data, size_t i_size);
+    /* TODO: These signatures dont match. */
 #endif
 
-typedef struct
-{ 
-    mecs_sparse_t block[MECS_PAGE_LEN_SPARSE]; 
+    typedef struct
+    {
+        mecs_sparse_t block[MECS_PAGE_LEN_SPARSE]; 
 } mecs_sparse_block_t;
 
 typedef struct mecs_component_store_t mecs_component_store_t;
@@ -547,7 +551,7 @@ Implementaton of compiler and platform agnostic standard library types/functions
 
 /* Provide custom or default implementation for the number of bits in a char. */
 #if !defined(MECS_CHAR_BIT)
-    #if defined(_cplusplus)
+    #if defined(__cplusplus)
         #include <climits>
     #else
         #include <limits.h>
@@ -557,7 +561,7 @@ Implementaton of compiler and platform agnostic standard library types/functions
 
 /* Provide custom or default implementation for asserts which this library heavily depends on for error checking. */
 #if !defined(mecs_assert)
-    #if defined(_cplusplus)
+    #if defined(__cplusplus)
         #include <cassert>
     #else
         #include <assert.h>
@@ -585,7 +589,7 @@ Implementaton of compiler and platform agnostic standard library types/functions
 #endif
 
 #if !defined(mecs_realloc) && !defined(mecs_free)
-    #if defined(_cplusplus)
+    #if defined(__cplusplus)
         #include <cstdlib>
     #else
         #include <stdlib.h>
