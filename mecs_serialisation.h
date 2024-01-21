@@ -165,7 +165,7 @@ typedef union
 
     #define MECS_SERIALISATION_IS_TRIVIAL_DECLARE(T_type, i_is_trivial)                                                     \
         template<>                                                                                                          \
-        struct mecs_serialisation_is_trivial_impl<T_type> { enum { v = i_is_trivial }; }                \
+        struct mecs_serialisation_is_trivial_impl<T_type> { enum { v = i_is_trivial }; }                                    \
 
 #else 
     #define MECS_FUNC_NAME_SERIALISE(T_type) mecs__serialise_##T_type
@@ -356,29 +356,26 @@ typedef struct mecs_registry_t mecs_registry_t;
 typedef struct mecs_component_store_t mecs_component_store_t;
 
     
-
-#define MECS_COMPONENT_REGISTER_SERIALISATION_HOOKS(io_registry, T_component) mecs_component_register_serialisation_hooks_impl( \
-    (io_registry),                                                                                                              \
-    MECS_COMPONENT_IDENT(T_component),                                                                                          \
+/* TODO: Ugly casts here. Please correct this. */
+#define MECS_COMPONENT_REGISTER_SERIALISATION_HOOKS(T_component) mecs_component_register_serialisation_hooks_impl( \
+    mecs_component_get_type_ptr(T_component),                                                                                          \
     (mecs_serialise_func_t)((void(*)(mecs_serialiser_t* io_serialiser, T_component* io_data))(MECS_FUNC_NAME_SERIALISE(T_component))),                                                             \
     (mecs_deserialise_func_t)((void(*)(mecs_deserialiser_t* io_deserialiser, T_component* io_data))(MECS_FUNC_NAME_DESERIALISE(T_component))),                                                             \
     mecs_serialisation_is_trivial(T_component))                                                                                 \
 
-#define MECS_COMPONENT_REGISTER_SERIALISE_HOOK(io_registry, T_component) mecs_component_register_serialise_hook_impl(           \
-    (io_registry),                                                                                                              \
-    MECS_COMPONENT_IDENT(T_component),                                                                                          \
+#define MECS_COMPONENT_REGISTER_SERIALISE_HOOK(T_component) mecs_component_register_serialise_hook_impl(           \
+    mecs_component_get_type_ptr(T_component),                                                                                          \
     (mecs_serialise_func_t)((void(*)(mecs_serialiser_t* io_serialiser, T_component* io_data))(MECS_FUNC_NAME_SERIALISE(T_component))),                                                             \
     mecs_serialisation_is_trivial(T_component))                                                                                 \
 
-#define MECS_COMPONENT_REGISTER_DESERIALISE_HOOK(io_registry, T_component) mecs_component_register_deserialise_hook_impl(       \
-    (io_registry),                                                                                                              \
-    MECS_COMPONENT_IDENT(T_component),                                                                                          \
+#define MECS_COMPONENT_REGISTER_DESERIALISE_HOOK(T_component) mecs_component_register_deserialise_hook_impl(       \
+    mecs_component_get_type_ptr(T_component),                                                                                          \
     (mecs_deserialise_func_t)((void(*)(mecs_deserialiser_t* io_deserialiser, T_component* io_data))(MECS_FUNC_NAME_DESERIALISE(T_component))),                                                             \
     mecs_serialisation_is_trivial(T_component))                                                                                 \
 
-void mecs_component_register_serialisation_hooks_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_serialise_func_t i_serialise, mecs_deserialise_func_t i_deserialise, mecs_bool_t i_is_trivial);
-void mecs_component_register_serialise_hook_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_serialise_func_t i_serialise, mecs_bool_t i_is_trivial);
-void mecs_component_register_deserialise_hook_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_deserialise_func_t i_deserialise, mecs_bool_t i_is_trivial);
+void mecs_component_register_serialisation_hooks_impl(mecs_component_type_t* o_type, mecs_serialise_func_t i_serialise, mecs_deserialise_func_t i_deserialise, mecs_bool_t i_is_trivial);
+void mecs_component_register_serialise_hook_impl(mecs_component_type_t* o_type, mecs_serialise_func_t i_serialise, mecs_bool_t i_is_trivial);
+void mecs_component_register_deserialise_hook_impl(mecs_component_type_t* o_type, mecs_deserialise_func_t i_deserialise, mecs_bool_t i_is_trivial);
 
 void mecs_serialise_registry(mecs_serialiser_t* io_serialiser, mecs_registry_t const* i_registry);
 void mecs_deserialise_registry(mecs_deserialiser_t* io_deserialiser, mecs_registry_t*o_registry);
@@ -426,26 +423,26 @@ void mecs_deserialiser_binary_read_func(mecs_deserialiser_t* io_deserialiser, vo
 /* --------------------------------------------------
 Core serialisation
 -------------------------------------------------- */
-void mecs_component_register_serialisation_hooks_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_serialise_func_t i_serialise, mecs_deserialise_func_t i_deserialise, mecs_bool_t i_is_trivial)
+void mecs_component_register_serialisation_hooks_impl(mecs_component_type_t* o_type, mecs_serialise_func_t i_serialise, mecs_deserialise_func_t i_deserialise, mecs_bool_t i_is_trivial)
 {
-    mecs_assert(io_registry);
-    io_registry->components[i_component].serialise_func = i_serialise;
-    io_registry->components[i_component].deserialise_func = i_deserialise;
-    io_registry->components[i_component].is_trivial = i_is_trivial;
+    mecs_assert(o_type);
+    o_type->serialise_func = i_serialise;
+    o_type->deserialise_func = i_deserialise;
+    o_type->is_trivial = i_is_trivial;
 }
 
-void mecs_component_register_serialise_hook_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_serialise_func_t i_serialise, mecs_bool_t i_is_trivial)
+void mecs_component_register_serialise_hook_impl(mecs_component_type_t* o_type, mecs_serialise_func_t i_serialise, mecs_bool_t i_is_trivial)
 {
-    mecs_assert(io_registry);
-    io_registry->components[i_component].serialise_func = i_serialise;
-    io_registry->components[i_component].is_trivial = i_is_trivial;
+    mecs_assert(o_type);
+    o_type->serialise_func = i_serialise;
+    o_type->is_trivial = i_is_trivial;
 }
 
-void mecs_component_register_deserialise_hook_impl(mecs_registry_t* io_registry, mecs_component_t i_component, mecs_deserialise_func_t i_deserialise, mecs_bool_t i_is_trivial)
+void mecs_component_register_deserialise_hook_impl(mecs_component_type_t* o_type, mecs_deserialise_func_t i_deserialise, mecs_bool_t i_is_trivial)
 {
-    mecs_assert(io_registry);
-    io_registry->components[i_component].deserialise_func = i_deserialise;
-    io_registry->components[i_component].is_trivial = i_is_trivial;
+    mecs_assert(o_type);
+    o_type->deserialise_func = i_deserialise;
+    o_type->is_trivial = i_is_trivial;
 }
 
 #define mecs_object_begin(io_serialiser)            if ((io_serialiser)->object_begin_func) (io_serialiser)->object_begin_func(io_serialiser)
@@ -485,9 +482,15 @@ void mecs_serialise_registry(mecs_serialiser_t* io_serialiser, mecs_registry_t c
     mecs_write(io_serialiser, &i_registry->next_free_entity, sizeof(mecs_entity_t));
 
     /* Serialise component stores. */
-    mecs_map_begin(io_serialiser, i_registry->components_len);
+    mecs_map_begin(io_serialiser, i_registry->valid_components_count);
     for (i = 0; i < i_registry->components_len; ++i)
     {
+        if (i_registry->components[i].type == NULL)
+        {
+            /* Not a valid component, nothing to serialise. */
+            continue;
+        }
+
         component_id = i;
         mecs_write(io_serialiser, &component_id, sizeof(component_id));
 
@@ -500,7 +503,7 @@ void mecs_serialise_registry(mecs_serialiser_t* io_serialiser, mecs_registry_t c
 void mecs_deserialise_registry(mecs_deserialiser_t* io_deserialiser, mecs_registry_t* o_registry)
 {
     size_t entities_len;
-    size_t components_len;
+    size_t valid_components_count;
     mecs_entity_t* entity;
     mecs_component_size_t i;
     mecs_component_size_t component_id;
@@ -509,7 +512,7 @@ void mecs_deserialise_registry(mecs_deserialiser_t* io_deserialiser, mecs_regist
     mecs_assert(o_registry != NULL);
 
     entities_len = 0;
-    components_len = 0;
+    valid_components_count = 0;
     component_id = 0;
 
     /* Deserialise free and allocated entities. */
@@ -536,10 +539,11 @@ void mecs_deserialise_registry(mecs_deserialiser_t* io_deserialiser, mecs_regist
     mecs_read(io_deserialiser, &o_registry->next_free_entity, sizeof(mecs_entity_t));
 
     /* Deserialise component stores. */
-    mecs_map_begin(io_deserialiser, &components_len);
-    for (i = 0; i < components_len; ++i)
+    mecs_map_begin(io_deserialiser, &valid_components_count);
+    for (i = 0; i < valid_components_count; ++i)
     {
         mecs_read(io_deserialiser, &component_id, sizeof(component_id));
+        /* TODO: Clear component stores not in deserialised data. */
 
         if (io_deserialiser->allow_out_of_order)
         {
@@ -565,7 +569,7 @@ void mecs_serialise_component_store(mecs_serialiser_t* io_serialiser, mecs_compo
     void* component;
     mecs_assert(io_serialiser != NULL);
     mecs_assert(i_component_store != NULL);
-    mecs_assert(i_component_store->serialise_func != NULL);
+    mecs_assert(i_component_store->type->serialise_func != NULL);
 
     mecs_object_begin(io_serialiser);
     {
@@ -588,20 +592,20 @@ void mecs_serialise_component_store(mecs_serialiser_t* io_serialiser, mecs_compo
         mecs_list_begin(io_serialiser, i_component_store->entities_count);
         {
             /* Serialise all components. */
-            if (io_serialiser->allow_binary && i_component_store->is_trivial)
+            if (io_serialiser->allow_binary && i_component_store->type->is_trivial)
             {
                 /* Serialise each component page as a single binary blob. */
                 for (page_index = 0; page_index < i_component_store->components_len - 1; ++page_index)
                 {
                     page = i_component_store->components[page_index];
                     page_len = MECS_PAGE_LEN_DENSE;
-                    mecs_write(io_serialiser, page, i_component_store->size * page_len);
+                    mecs_write(io_serialiser, page, i_component_store->type->size * page_len);
                 }
                 if (i_component_store->components_len > 0)
                 {
                     page = i_component_store->components[i_component_store->components_len - 1];
                     page_len = i_component_store->entities_count % MECS_PAGE_LEN_DENSE;
-                    mecs_write(io_serialiser, page, i_component_store->size * page_len);
+                    mecs_write(io_serialiser, page, i_component_store->type->size * page_len);
                 }
             }
             else 
@@ -612,8 +616,8 @@ void mecs_serialise_component_store(mecs_serialiser_t* io_serialiser, mecs_compo
                     page_index = i / MECS_PAGE_LEN_DENSE;
                     page_offset = i % MECS_PAGE_LEN_DENSE;
                     page = i_component_store->components[page_index];
-                    component = (void*)(((char*)page) + (page_offset * i_component_store->size));
-                    i_component_store->serialise_func(io_serialiser, component, i_component_store->size);
+                    component = (void*)(((char*)page) + (page_offset * i_component_store->type->size));
+                    i_component_store->type->serialise_func(io_serialiser, component, i_component_store->type->size);
                 }
             }
         }
@@ -638,7 +642,7 @@ void mecs_deserialise_component_store(mecs_deserialiser_t* io_deserialiser, mecs
     void* component;
     mecs_assert(io_deserialiser != NULL);
     mecs_assert(o_component_store != NULL);
-    mecs_assert(o_component_store->deserialise_func != NULL);
+    mecs_assert(o_component_store->type->deserialise_func != NULL);
 
     entities_count = 0;
     entity = MECS_ENTITY_INVALID;
@@ -683,7 +687,7 @@ void mecs_deserialise_component_store(mecs_deserialiser_t* io_deserialiser, mecs
             mecs_assert(components_count == entities_count);
 
             /* Deserialise all components. */
-            if (io_deserialiser->allow_binary && o_component_store->is_trivial)
+            if (io_deserialiser->allow_binary && o_component_store->type->is_trivial)
             {
                 /* Deserialise components as single binary blobs into pages. */
                 page_count = (mecs_entity_size_t)components_count / MECS_PAGE_LEN_DENSE;
@@ -691,13 +695,13 @@ void mecs_deserialise_component_store(mecs_deserialiser_t* io_deserialiser, mecs
                 {
                     page = o_component_store->components[page_index];
                     page_len = MECS_PAGE_LEN_DENSE;
-                    mecs_read(io_deserialiser, page, o_component_store->size * page_len);
+                    mecs_read(io_deserialiser, page, o_component_store->type->size * page_len);
                 }
                 if (o_component_store->components_len > 0)
                 {
                     page = o_component_store->components[page_count];
                     page_len = components_count % MECS_PAGE_LEN_DENSE;
-                    mecs_read(io_deserialiser, page, o_component_store->size * page_len);
+                    mecs_read(io_deserialiser, page, o_component_store->type->size * page_len);
                 }
             }
             else 
@@ -708,8 +712,8 @@ void mecs_deserialise_component_store(mecs_deserialiser_t* io_deserialiser, mecs
                     page_index = i / MECS_PAGE_LEN_DENSE;
                     page_offset = i % MECS_PAGE_LEN_DENSE;
                     page = o_component_store->components[page_index];
-                    component = (void*)(((char*)page) + (page_offset * o_component_store->size));
-                    o_component_store->deserialise_func(io_deserialiser, component, o_component_store->size);
+                    component = (void*)(((char*)page) + (page_offset * o_component_store->type->size));
+                    o_component_store->type->deserialise_func(io_deserialiser, component, o_component_store->type->size);
                 }
             }
         }
