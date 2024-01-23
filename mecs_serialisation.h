@@ -167,6 +167,29 @@ typedef union
         template<>                                                                                                          \
         struct mecs_serialisation_is_trivial_impl<T_type> { enum { v = i_is_trivial }; }                                    \
 
+    /* Argument dependent lookup allows to invoke a function in a different namespace from outside of that namespace 
+       based on the function argument passed. This helper allows grabbing a function pointer to the serialise and 
+       deserialise methods from outside of their namespace. */
+    template<class T_type>
+    struct mecs_serialisation_adl_helper 
+    {
+        static void serialise_func(mecs_serialiser_t* io_archive, T_type* io_data) 
+        { 
+            MECS_FUNC_NAME_SERIALISE(T_type)(io_archive, io_data); 
+        }
+
+        static void deserialise_func(mecs_deserialiser_t* io_archive, T_type* io_data) 
+        { 
+            MECS_FUNC_NAME_DESERIALISE(T_type)(io_archive, io_data); 
+        }
+    };
+
+    #define MECS_FUNC_PTR_SERIALISE(T_type)                                                                                 \
+        &mecs_serialisation_adl_helper<T_type>::serialise_func                                                              \
+
+    #define MECS_FUNC_PTR_DESERIALISE(T_type)                                                                               \
+        &mecs_serialisation_adl_helper<T_type>::deserialise_func                                                            \
+
 #else 
     #define MECS_FUNC_NAME_SERIALISE(T_type) mecs__serialise_##T_type
     #define MECS_FUNC_NAME_DESERIALISE(T_type) mecs__deserialise_##T_type
@@ -177,6 +200,12 @@ typedef union
 
     #define MECS_SERIALISATION_IS_TRIVIAL_DECLARE(T_type, i_is_trivial)                                                     \
         mecs_bool_t mecs__is_trivial_##T_type = i_is_trivial                                                                \
+
+    #define MECS_FUNC_PTR_SERIALISE(T_type)                                                                                 \
+        &MECS_FUNC_NAME_SERIALISE(T_type)                                                                                   \
+
+    #define MECS_FUNC_PTR_DESERIALISE(T_type)                                                                               \
+        &MECS_FUNC_NAME_DESERIALISE(T_type)                                                                                 \
 
 #endif
 
@@ -355,23 +384,21 @@ Core serialisation types
 typedef struct mecs_registry_t mecs_registry_t;
 typedef struct mecs_component_store_t mecs_component_store_t;
 
-    
-/* TODO: Ugly casts here. Please correct this. */
-#define MECS_COMPONENT_REGISTER_SERIALISATION_HOOKS(T_component) mecs_component_register_serialisation_hooks_impl( \
-    mecs_component_get_type_ptr(T_component),                                                                                          \
-    (mecs_serialise_func_t)((void(*)(mecs_serialiser_t* io_serialiser, T_component* io_data))(MECS_FUNC_NAME_SERIALISE(T_component))),                                                             \
-    (mecs_deserialise_func_t)((void(*)(mecs_deserialiser_t* io_deserialiser, T_component* io_data))(MECS_FUNC_NAME_DESERIALISE(T_component))),                                                             \
-    mecs_serialisation_is_trivial(T_component))                                                                                 \
+#define MECS_COMPONENT_REGISTER_SERIALISATION_HOOKS(T_component) mecs_component_register_serialisation_hooks_impl(      \
+    mecs_component_get_type_ptr(T_component),                                                                           \
+    (mecs_serialise_func_t)(MECS_FUNC_PTR_SERIALISE(T_component)),                                                      \
+    (mecs_deserialise_func_t)(MECS_FUNC_PTR_DESERIALISE(T_component)),                                                  \
+    mecs_serialisation_is_trivial(T_component))                                                                         \
 
-#define MECS_COMPONENT_REGISTER_SERIALISE_HOOK(T_component) mecs_component_register_serialise_hook_impl(           \
-    mecs_component_get_type_ptr(T_component),                                                                                          \
-    (mecs_serialise_func_t)((void(*)(mecs_serialiser_t* io_serialiser, T_component* io_data))(MECS_FUNC_NAME_SERIALISE(T_component))),                                                             \
-    mecs_serialisation_is_trivial(T_component))                                                                                 \
+#define MECS_COMPONENT_REGISTER_SERIALISE_HOOK(T_component) mecs_component_register_serialise_hook_impl(                \
+    mecs_component_get_type_ptr(T_component),                                                                           \
+    (mecs_serialise_func_t)(MECS_FUNC_PTR_SERIALISE(T_component)),                                                      \
+    mecs_serialisation_is_trivial(T_component))                                                                         \
 
-#define MECS_COMPONENT_REGISTER_DESERIALISE_HOOK(T_component) mecs_component_register_deserialise_hook_impl(       \
-    mecs_component_get_type_ptr(T_component),                                                                                          \
-    (mecs_deserialise_func_t)((void(*)(mecs_deserialiser_t* io_deserialiser, T_component* io_data))(MECS_FUNC_NAME_DESERIALISE(T_component))),                                                             \
-    mecs_serialisation_is_trivial(T_component))                                                                                 \
+#define MECS_COMPONENT_REGISTER_DESERIALISE_HOOK(T_component) mecs_component_register_deserialise_hook_impl(            \
+    mecs_component_get_type_ptr(T_component),                                                                           \
+    (mecs_deserialise_func_t)(MECS_FUNC_PTR_DESERIALISE(T_component)),                                                  \
+    mecs_serialisation_is_trivial(T_component))                                                                         \
 
 void mecs_component_register_serialisation_hooks_impl(mecs_component_type_t* o_type, mecs_serialise_func_t i_serialise, mecs_deserialise_func_t i_deserialise, mecs_bool_t i_is_trivial);
 void mecs_component_register_serialise_hook_impl(mecs_component_type_t* o_type, mecs_serialise_func_t i_serialise, mecs_bool_t i_is_trivial);
@@ -617,7 +644,7 @@ void mecs_serialise_component_store(mecs_serialiser_t* io_serialiser, mecs_compo
                     page_offset = i % MECS_PAGE_LEN_DENSE;
                     page = i_component_store->components[page_index];
                     component = (void*)(((char*)page) + (page_offset * i_component_store->type->size));
-                    i_component_store->type->serialise_func(io_serialiser, component, i_component_store->type->size);
+                    i_component_store->type->serialise_func(io_serialiser, component);
                 }
             }
         }
@@ -713,7 +740,7 @@ void mecs_deserialise_component_store(mecs_deserialiser_t* io_deserialiser, mecs
                     page_offset = i % MECS_PAGE_LEN_DENSE;
                     page = o_component_store->components[page_index];
                     component = (void*)(((char*)page) + (page_offset * o_component_store->type->size));
-                    o_component_store->type->deserialise_func(io_deserialiser, component, o_component_store->type->size);
+                    o_component_store->type->deserialise_func(io_deserialiser, component);
                 }
             }
         }

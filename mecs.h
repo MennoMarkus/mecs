@@ -386,9 +386,8 @@ typedef void(*mecs_move_and_dtor_func_t)(void* io_src_to_move, void* io_dst_to_d
 #if !defined(MECS_NO_SERIALISATION)
     typedef struct mecs_serialiser_t mecs_serialiser_t;
     typedef struct mecs_deserialiser_t mecs_deserialiser_t;
-    typedef void(*mecs_serialise_func_t)(mecs_serialiser_t* io_serialiser, void* io_data, size_t i_size);
-    typedef void(*mecs_deserialise_func_t)(mecs_deserialiser_t* io_deserialiser, void* io_data, size_t i_size);
-    /* TODO: These signatures dont match. */
+    typedef void(*mecs_serialise_func_t)(mecs_serialiser_t* io_serialiser, void* i_data);
+    typedef void(*mecs_deserialise_func_t)(mecs_deserialiser_t* io_deserialiser, void* o_data);
 #endif
 
 /* Type information about a component. If a component is shared between registries, it's type information is shared between them. The first registry to use the component assigns it. */
