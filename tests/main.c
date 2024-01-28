@@ -197,6 +197,16 @@ void memory_leak_detector_free(void* i_ptr)
 
 typedef struct 
 {
+    mecs_uint32_t v; 
+} test_comp_4;
+
+typedef struct 
+{
+   mecs_uint64_t v; 
+} test_comp_8;
+
+typedef struct 
+{
     mecs_uint32_t n; 
 } test_comp_serialise_nested;
 
@@ -224,132 +234,6 @@ ARCHIVE(test_comp_serialise, MECS_TRUE)
 }
 
 #if defined(__cplusplus)
-namespace cpp 
-{
-
-class test_comp_serialise_cpp 
-{
-public:
-    std::uint32_t v;
-};
-
-ARCHIVE(test_comp_serialise_cpp, MECS_TRUE)
-{
-    archive_add(std::uint32_t, v, 0);
-}
-
-}
-#endif
-
-COMPONENT_DECLARE(test_comp_serialise);
-#if defined(__cplusplus)
-COMPONENT_DECLARE(cpp::test_comp_serialise_cpp);
-#endif
-
-
-void test_serialise(void)
-{
-    registry_t* registry0;
-    registry_t* registry1;
-    entity_t entity0;
-    entity_t entity1;
-    test_comp_serialise* comp0;
-    test_comp_serialise* comp1;
-    #if defined(__cplusplus)
-    cpp::test_comp_serialise_cpp* comp2;
-    #endif
-    void* buffer;
-    size_t buffer_size;
-
-    /* Serialisation */
-    {
-        registry0 = registry_create(2);
-        COMPONENT_REGISTER_SERIALISATION_HOOKS(test_comp_serialise);
-        COMPONENT_REGISTER(registry0, test_comp_serialise);
-        #if defined(__cplusplus)
-        COMPONENT_REGISTER_SERIALISATION_HOOKS(cpp::test_comp_serialise_cpp);
-        COMPONENT_REGISTER(registry0, cpp::test_comp_serialise_cpp);
-        #endif
-
-        entity0 = entity_create(registry0);
-        comp0 = component_add(registry0, entity0, test_comp_serialise);
-        comp0->v1 = 1;
-        comp0->v2 = 2;
-        comp0->v3 = 3;
-        comp0->v4.n = 4;
-
-        entity1 = entity_create(registry0);
-        comp1 = component_add(registry0, entity1, test_comp_serialise);
-        comp1->v1 = 5;
-        comp1->v2 = 6;
-        comp1->v3 = 7;
-        comp1->v4.n = 8;
-
-        #if defined(__cplusplus)
-        comp2 = component_add(registry0, entity1, cpp::test_comp_serialise_cpp);
-        comp2->v = 9;
-        #endif
-
-        serialise_registry_binary(registry0, &buffer, &buffer_size);
-    }
-
-    /* Deserialisation */
-    {
-        registry1 = registry_create(2);
-        COMPONENT_REGISTER_SERIALISATION_HOOKS(test_comp_serialise);
-        COMPONENT_REGISTER(registry1, test_comp_serialise);
-        #if defined(__cplusplus)
-        COMPONENT_REGISTER_SERIALISATION_HOOKS(cpp::test_comp_serialise_cpp);
-        COMPONENT_REGISTER(registry1, cpp::test_comp_serialise_cpp);
-        #endif
-
-        deserialise_registry_binary(registry1, buffer, buffer_size);
-
-        test(serialisation_is_trivial(test_comp_serialise));
-        test(!serialisation_is_trivial(test_comp_serialise_nested));
-        #if defined(__cplusplus)
-        test(serialisation_is_trivial(cpp::test_comp_serialise_cpp));
-        #endif
-
-        test_uint(registry1->entities_len, 2);
-        test_uint(entity_get_id(registry1->entities[0]), 0);
-        test_uint(entity_get_id(registry1->entities[1]), 1);
-        test_uint(entity_get_generation(registry1->entities[0]), 0);
-        test_uint(entity_get_generation(registry1->entities[1]), 0);
-        test_uint(component_has(registry1, entity0, test_comp_serialise), MECS_TRUE);
-        test_uint(component_has(registry1, entity1, test_comp_serialise), MECS_TRUE);
-
-        test_uint(component_get(registry1, entity0, test_comp_serialise)->v1, 1);
-        test_uint(component_get(registry1, entity0, test_comp_serialise)->v2, 2);
-        test_uint(component_get(registry1, entity0, test_comp_serialise)->v3, 3);
-        test_uint(component_get(registry1, entity0, test_comp_serialise)->v4.n, 4);
-        test_uint(component_get(registry1, entity1, test_comp_serialise)->v1, 5);
-        test_uint(component_get(registry1, entity1, test_comp_serialise)->v2, 6);
-        test_uint(component_get(registry1, entity1, test_comp_serialise)->v3, 7);
-        test_uint(component_get(registry1, entity1, test_comp_serialise)->v4.n, 8);
-
-        #if defined(__cplusplus)
-        test_uint(component_has(registry1, entity1, cpp::test_comp_serialise_cpp), MECS_TRUE);
-        test_uint(component_get(registry1, entity1, cpp::test_comp_serialise_cpp)->v, 9);
-        #endif
-    }
-
-    memory_leak_detector_free(buffer);
-    registry_destroy(registry0);
-    registry_destroy(registry1);
-}
-
-typedef struct 
-{
-    mecs_uint32_t v; 
-} test_comp_4;
-
-typedef struct 
-{
-   mecs_uint64_t v; 
-} test_comp_8;
-
-#if defined(__cplusplus)
 namespace cpp
 {
 
@@ -373,8 +257,25 @@ class test_comp_cpp_inner_scope
     std::uint32_t v;
 };
 
+class test_comp_serialise_cpp 
+{
+public:
+    std::uint32_t v;
+};
+
+ARCHIVE(test_comp_serialise_cpp, MECS_TRUE)
+{
+    archive_add(std::uint32_t, v, 0);
+}
+
 }
 #endif
+
+COMPONENT_DECLARE(test_comp_serialise);
+#if defined(__cplusplus)
+COMPONENT_DECLARE(cpp::test_comp_serialise_cpp);
+#endif
+
 
 COMPONENT_DECLARE(test_comp_4);
 COMPONENT_DECLARE(test_comp_8);
@@ -657,6 +558,98 @@ void test_constructor_cpp(void)
     registry_destroy(registry);
 }
 #endif
+
+void test_serialise(void)
+{
+    registry_t* registry0;
+    registry_t* registry1;
+    entity_t entity0;
+    entity_t entity1;
+    test_comp_serialise* comp0;
+    test_comp_serialise* comp1;
+    #if defined(__cplusplus)
+    cpp::test_comp_serialise_cpp* comp2;
+    #endif
+    void* buffer;
+    size_t buffer_size;
+
+    /* Serialisation */
+    {
+        registry0 = registry_create(2);
+        COMPONENT_REGISTER_SERIALISATION_HOOKS(test_comp_serialise);
+        COMPONENT_REGISTER(registry0, test_comp_serialise);
+        #if defined(__cplusplus)
+        COMPONENT_REGISTER_SERIALISATION_HOOKS(cpp::test_comp_serialise_cpp);
+        COMPONENT_REGISTER(registry0, cpp::test_comp_serialise_cpp);
+        #endif
+
+        entity0 = entity_create(registry0);
+        comp0 = component_add(registry0, entity0, test_comp_serialise);
+        comp0->v1 = 1;
+        comp0->v2 = 2;
+        comp0->v3 = 3;
+        comp0->v4.n = 4;
+
+        entity1 = entity_create(registry0);
+        comp1 = component_add(registry0, entity1, test_comp_serialise);
+        comp1->v1 = 5;
+        comp1->v2 = 6;
+        comp1->v3 = 7;
+        comp1->v4.n = 8;
+
+        #if defined(__cplusplus)
+        comp2 = component_add(registry0, entity1, cpp::test_comp_serialise_cpp);
+        comp2->v = 9;
+        #endif
+
+        serialise_registry_binary(registry0, &buffer, &buffer_size);
+    }
+
+    /* Deserialisation */
+    {
+        registry1 = registry_create(2);
+        COMPONENT_REGISTER_SERIALISATION_HOOKS(test_comp_serialise);
+        COMPONENT_REGISTER(registry1, test_comp_serialise);
+        #if defined(__cplusplus)
+        COMPONENT_REGISTER_SERIALISATION_HOOKS(cpp::test_comp_serialise_cpp);
+        COMPONENT_REGISTER(registry1, cpp::test_comp_serialise_cpp);
+        #endif
+
+        deserialise_registry_binary(registry1, buffer, buffer_size);
+
+        test(serialisation_is_trivial(test_comp_serialise));
+        test(!serialisation_is_trivial(test_comp_serialise_nested));
+        #if defined(__cplusplus)
+        test(serialisation_is_trivial(cpp::test_comp_serialise_cpp));
+        #endif
+
+        test_uint(registry1->entities_len, 2);
+        test_uint(entity_get_id(registry1->entities[0]), 0);
+        test_uint(entity_get_id(registry1->entities[1]), 1);
+        test_uint(entity_get_generation(registry1->entities[0]), 0);
+        test_uint(entity_get_generation(registry1->entities[1]), 0);
+        test_uint(component_has(registry1, entity0, test_comp_serialise), MECS_TRUE);
+        test_uint(component_has(registry1, entity1, test_comp_serialise), MECS_TRUE);
+
+        test_uint(component_get(registry1, entity0, test_comp_serialise)->v1, 1);
+        test_uint(component_get(registry1, entity0, test_comp_serialise)->v2, 2);
+        test_uint(component_get(registry1, entity0, test_comp_serialise)->v3, 3);
+        test_uint(component_get(registry1, entity0, test_comp_serialise)->v4.n, 4);
+        test_uint(component_get(registry1, entity1, test_comp_serialise)->v1, 5);
+        test_uint(component_get(registry1, entity1, test_comp_serialise)->v2, 6);
+        test_uint(component_get(registry1, entity1, test_comp_serialise)->v3, 7);
+        test_uint(component_get(registry1, entity1, test_comp_serialise)->v4.n, 8);
+
+        #if defined(__cplusplus)
+        test_uint(component_has(registry1, entity1, cpp::test_comp_serialise_cpp), MECS_TRUE);
+        test_uint(component_get(registry1, entity1, cpp::test_comp_serialise_cpp)->v, 9);
+        #endif
+    }
+
+    memory_leak_detector_free(buffer);
+    registry_destroy(registry0);
+    registry_destroy(registry1);
+}
 
 int main(void) 
 {
