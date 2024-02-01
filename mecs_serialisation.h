@@ -98,11 +98,11 @@ typedef struct mecs_deserialiser_t mecs_deserialiser_t;
 
 typedef void(*mecs_serialiser_object_begin_func_t)(mecs_serialiser_t* io_serialiser);
 typedef void(*mecs_serialiser_object_end_func_t)(mecs_serialiser_t* io_serialiser);
-typedef void(*mecs_serialiser_list_begin_func_t)(mecs_serialiser_t* io_serialiser, size_t i_length);
+typedef void(*mecs_serialiser_list_begin_func_t)(mecs_serialiser_t* io_serialiser, mecs_size_t i_length);
 typedef void(*mecs_serialiser_list_end_func_t)(mecs_serialiser_t* io_serialiser);
-typedef void(*mecs_serialiser_map_begin_func_t)(mecs_serialiser_t* io_serialiser, size_t i_length);
+typedef void(*mecs_serialiser_map_begin_func_t)(mecs_serialiser_t* io_serialiser, mecs_size_t i_length);
 typedef void(*mecs_serialiser_map_end_func_t)(mecs_serialiser_t* io_serialiser);
-typedef void(*mecs_serialiser_write_func_t)(mecs_serialiser_t* io_serialiser, void const* i_data, size_t i_size);
+typedef void(*mecs_serialiser_write_func_t)(mecs_serialiser_t* io_serialiser, void const* i_data, mecs_size_t i_size);
 
 struct mecs_serialiser_t
 {
@@ -123,11 +123,11 @@ struct mecs_serialiser_t
 
 typedef void(*mecs_deserialiser_object_begin_func_t)(mecs_deserialiser_t* io_deserialiser);
 typedef void(*mecs_deserialiser_object_end_func_t)(mecs_deserialiser_t* io_deserialiser);
-typedef void(*mecs_deserialiser_list_begin_func_t)(mecs_deserialiser_t* io_deserialiser, size_t* o_length);
+typedef void(*mecs_deserialiser_list_begin_func_t)(mecs_deserialiser_t* io_deserialiser, mecs_size_t* o_length);
 typedef void(*mecs_deserialiser_list_end_func_t)(mecs_deserialiser_t* io_deserialiser);
-typedef void(*mecs_deserialiser_map_begin_func_t)(mecs_deserialiser_t* io_deserialiser, size_t* o_length);
+typedef void(*mecs_deserialiser_map_begin_func_t)(mecs_deserialiser_t* io_deserialiser, mecs_size_t* o_length);
 typedef void(*mecs_deserialiser_map_end_func_t)(mecs_deserialiser_t* io_deserialiser);
-typedef void(*mecs_deserialiser_read_func_t)(mecs_deserialiser_t* io_deserialiser, void* o_data, size_t i_size);
+typedef void(*mecs_deserialiser_read_func_t)(mecs_deserialiser_t* io_deserialiser, void* o_data, mecs_size_t i_size);
 
 struct mecs_deserialiser_t
 {
@@ -418,30 +418,30 @@ typedef struct
 {
     mecs_serialiser_t base;
     void* data;
-    size_t capacity;
-    size_t size;
+    mecs_size_t capacity;
+    mecs_size_t size;
 } mecs_serialiser_binary_t;
 
 typedef struct
 {
     mecs_deserialiser_t base;
     void* data;
-    size_t size;
-    size_t position;
+    mecs_size_t size;
+    mecs_size_t position;
 } mecs_deserialiser_binary_t;
 
-void mecs_serialise_registry_binary(mecs_registry_t const* i_registry, void** o_data, size_t* o_size);
-void mecs_deserialise_registry_binary(mecs_registry_t* o_registry, void* i_data, size_t i_size);
+void mecs_serialise_registry_binary(mecs_registry_t const* i_registry, void** o_data, mecs_size_t* o_size);
+void mecs_deserialise_registry_binary(mecs_registry_t* o_registry, void* i_data, mecs_size_t i_size);
 
 void mecs_serialiser_binary_create(mecs_serialiser_binary_t* o_serialiser);
-void mecs_deserialiser_binary_create(mecs_deserialiser_binary_t* o_deserialiser, void* i_data, size_t i_size);
+void mecs_deserialiser_binary_create(mecs_deserialiser_binary_t* o_deserialiser, void* i_data, mecs_size_t i_size);
 
-void mecs_serialiser_binary_list_begin_func(mecs_serialiser_t* io_serialiser, size_t i_length);
-void mecs_serialiser_binary_map_begin_func(mecs_serialiser_t* io_serialiser, size_t i_length);
-void mecs_serialiser_binary_write_func(mecs_serialiser_t* io_serialiser, void const* i_data, size_t i_size);
-void mecs_deserialiser_binary_list_begin_func(mecs_deserialiser_t* io_deserialiser, size_t* o_length);
-void mecs_deserialiser_binary_map_begin_func(mecs_deserialiser_t* io_deserialiser, size_t* o_length);
-void mecs_deserialiser_binary_read_func(mecs_deserialiser_t* io_deserialiser, void* o_data, size_t i_size);
+void mecs_serialiser_binary_list_begin_func(mecs_serialiser_t* io_serialiser, mecs_size_t i_length);
+void mecs_serialiser_binary_map_begin_func(mecs_serialiser_t* io_serialiser, mecs_size_t i_length);
+void mecs_serialiser_binary_write_func(mecs_serialiser_t* io_serialiser, void const* i_data, mecs_size_t i_size);
+void mecs_deserialiser_binary_list_begin_func(mecs_deserialiser_t* io_deserialiser, mecs_size_t* o_length);
+void mecs_deserialiser_binary_map_begin_func(mecs_deserialiser_t* io_deserialiser, mecs_size_t* o_length);
+void mecs_deserialiser_binary_read_func(mecs_deserialiser_t* io_deserialiser, void* o_data, mecs_size_t i_size);
 
 #endif /* MECS_SERIALISATION_H */
 
@@ -529,8 +529,8 @@ void mecs_serialise_registry(mecs_serialiser_t* io_serialiser, mecs_registry_t c
 
 void mecs_deserialise_registry(mecs_deserialiser_t* io_deserialiser, mecs_registry_t* o_registry)
 {
-    size_t entities_len;
-    size_t valid_components_count;
+    mecs_size_t entities_len;
+    mecs_size_t valid_components_count;
     mecs_entity_t* entity;
     mecs_component_size_t i;
     mecs_component_size_t component_id;
@@ -655,12 +655,12 @@ void mecs_serialise_component_store(mecs_serialiser_t* io_serialiser, mecs_compo
 
 void mecs_deserialise_component_store(mecs_deserialiser_t* io_deserialiser, mecs_component_store_t* o_component_store)
 {
-    size_t entities_count;
+    mecs_size_t entities_count;
     mecs_entity_size_t i;
     mecs_dense_t entity;
     mecs_sparse_t* sparse_elem;
 
-    size_t components_count;
+    mecs_size_t components_count;
     mecs_entity_size_t page_count;
     mecs_entity_size_t page_index;
     mecs_entity_size_t page_offset;
@@ -753,7 +753,7 @@ void mecs_deserialise_component_store(mecs_deserialiser_t* io_deserialiser, mecs
 Unversioned binary serialisation
 -------------------------------------------------- */
 
-void mecs_serialise_registry_binary(mecs_registry_t const* i_registry, void** o_data, size_t* o_size) 
+void mecs_serialise_registry_binary(mecs_registry_t const* i_registry, void** o_data, mecs_size_t* o_size) 
 {
     mecs_serialiser_binary_t serialiser;
     mecs_assert(o_data != NULL);
@@ -772,7 +772,7 @@ void mecs_serialise_registry_binary(mecs_registry_t const* i_registry, void** o_
     }
 }
 
-void mecs_deserialise_registry_binary(mecs_registry_t* o_registry, void* i_data, size_t i_size)
+void mecs_deserialise_registry_binary(mecs_registry_t* o_registry, void* i_data, mecs_size_t i_size)
 {
     mecs_deserialiser_binary_t deserialiser;
     mecs_assert(i_data != NULL);
@@ -804,7 +804,7 @@ void mecs_serialiser_binary_create(mecs_serialiser_binary_t* o_serialiser)
     o_serialiser->size = 0;
 }
 
-void mecs_deserialiser_binary_create(mecs_deserialiser_binary_t* o_deserialiser, void* i_data, size_t i_size)
+void mecs_deserialiser_binary_create(mecs_deserialiser_binary_t* o_deserialiser, void* i_data, mecs_size_t i_size)
 {
     mecs_assert(o_deserialiser != NULL);
 
@@ -827,23 +827,23 @@ void mecs_deserialiser_binary_create(mecs_deserialiser_binary_t* o_deserialiser,
     o_deserialiser->position = 0;
 }
 
-void mecs_serialiser_binary_list_begin_func(mecs_serialiser_t* io_serialiser, size_t i_length)
+void mecs_serialiser_binary_list_begin_func(mecs_serialiser_t* io_serialiser, mecs_size_t i_length)
 {
     mecs_assert(io_serialiser != NULL);
     mecs_serialiser_binary_write_func(io_serialiser, &i_length, sizeof(i_length));
 }
 
-void mecs_serialiser_binary_map_begin_func(mecs_serialiser_t* io_serialiser, size_t i_length)
+void mecs_serialiser_binary_map_begin_func(mecs_serialiser_t* io_serialiser, mecs_size_t i_length)
 {
     mecs_assert(io_serialiser != NULL);
     mecs_serialiser_binary_write_func(io_serialiser, &i_length, sizeof(i_length));
 }
 
-void mecs_serialiser_binary_write_func(mecs_serialiser_t* io_serialiser, void const* i_data, size_t i_size)
+void mecs_serialiser_binary_write_func(mecs_serialiser_t* io_serialiser, void const* i_data, mecs_size_t i_size)
 {
     mecs_serialiser_binary_t* serialiser;
     void* data_grown;
-    size_t capacity_grown;
+    mecs_size_t capacity_grown;
     mecs_assert(io_serialiser != NULL);
 
     serialiser = (mecs_serialiser_binary_t*)io_serialiser->serialiser_data;
@@ -892,19 +892,19 @@ void mecs_serialiser_binary_write_func(mecs_serialiser_t* io_serialiser, void co
     serialiser->size += i_size;
 }
 
-void mecs_deserialiser_binary_list_begin_func(mecs_deserialiser_t* io_deserialiser, size_t* o_length)
+void mecs_deserialiser_binary_list_begin_func(mecs_deserialiser_t* io_deserialiser, mecs_size_t* o_length)
 {
     mecs_assert(io_deserialiser != NULL);
     mecs_deserialiser_binary_read_func(io_deserialiser, o_length, sizeof(*o_length));
 }
 
-void mecs_deserialiser_binary_map_begin_func(mecs_deserialiser_t* io_deserialiser, size_t* o_length)
+void mecs_deserialiser_binary_map_begin_func(mecs_deserialiser_t* io_deserialiser, mecs_size_t* o_length)
 {
     mecs_assert(io_deserialiser != NULL);
     mecs_deserialiser_binary_read_func(io_deserialiser, o_length, sizeof(*o_length));
 }
 
-void mecs_deserialiser_binary_read_func(mecs_deserialiser_t* io_deserialiser, void* o_data, size_t i_size)
+void mecs_deserialiser_binary_read_func(mecs_deserialiser_t* io_deserialiser, void* o_data, mecs_size_t i_size)
 {
     mecs_deserialiser_binary_t* deserialiser;
     mecs_assert(io_deserialiser != NULL);

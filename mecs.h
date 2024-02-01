@@ -88,10 +88,10 @@ Table:
         entity_t query_entity_get(query_it_t* io_query_it)
 
     query_component_has
-        bool query_component_has(query_it_t* io_query_it, T, size_t i_index)
+        bool query_component_has(query_it_t* io_query_it, T, mecs_size_t i_index)
 
     query_component_get
-        T* query_component_get(query_it_t* io_query_it, T, size_t i_index)
+        T* query_component_get(query_it_t* io_query_it, T, mecs_size_t i_index)
 
 2.) COMPILE TIME OPTIONS
 
@@ -236,9 +236,9 @@ Definition of compiler and platform agnostic standard library types/functions.
 -------------------------------------------------- */
 
 /* Provide custom or default implementation of stdint.h fixed size types. */
-#if defined(mecs_uint8_t) || defined(mecs_uint16_t) || defined(mecs_uint32_t) || defined(mecs_uint64_t)
-    #if !defined(mecs_uint8_t) || !defined(mecs_uint16_t) || !defined(mecs_uint32_t) || !defined(mecs_uint64_t)
-        #error "You must define all of mecs_uint8_t, mecs_uint16_t, mecs_uint32_t and mecs_uint64_t."
+#if defined(mecs_uint8_t) || defined(mecs_uint16_t) || defined(mecs_uint32_t) || defined(mecs_uint64_t) || defined(mecs_size_t)
+    #if !defined(mecs_uint8_t) || !defined(mecs_uint16_t) || !defined(mecs_uint32_t) || !defined(mecs_uint64_t) || !defined(mecs_size_t)
+        #error "You must define all of mecs_uint8_t, mecs_uint16_t, mecs_uint32_t, mecs_uint64_t and mecs_size_t."
     #endif
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L /* C99 */
     #include <stdint.h>
@@ -246,17 +246,20 @@ Definition of compiler and platform agnostic standard library types/functions.
     typedef uint16_t            mecs_uint16_t;
     typedef uint32_t            mecs_uint32_t;
     typedef uint64_t            mecs_uint64_t;
+    typedef size_t              mecs_size_t;
 #elif defined(__cplusplus) && __cplusplus >= 201103L /* C++11 */
     #include <cstdint>
     typedef std::uint8_t        mecs_uint8_t;
     typedef std::uint16_t       mecs_uint16_t;
     typedef std::uint32_t       mecs_uint32_t;
     typedef std::uint64_t       mecs_uint64_t;
+    typedef size_t              mecs_size_t;
 #else
     typedef unsigned char       mecs_uint8_t;
     typedef unsigned short      mecs_uint16_t;
     typedef unsigned long       mecs_uint32_t;
     typedef unsigned long long  mecs_uint64_t;
+    typedef size_t              mecs_size_t;
 #endif
 
 /* Provide custom or default implementation for booleans. */
@@ -277,13 +280,13 @@ Definition of compiler and platform agnostic standard library types/functions.
 /* Alignment. Provide custom implementation of alignof or default implementation which attempts to grab the most accurate implementation. */
 #if !defined(mecs_alignof)
     #if defined(__cplusplus) && __cplusplus >= 201103L /* C++11 */
-        #define mecs_alignof(T)     ((size_t)alignof(T))
+        #define mecs_alignof(T)     ((mecs_size_t)alignof(T))
     #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L /* C11 */
-        #define mecs_alignof(T)     ((size_t)_Alignof(T))
+        #define mecs_alignof(T)     ((mecs_size_t)_Alignof(T))
     #elif defined(_MSC_VER)
-        #define mecs_alignof(T)     ((size_t)__alignof(T))
+        #define mecs_alignof(T)     ((mecs_size_t)__alignof(T))
     #elif defined(__GNUC__)
-        #define mecs_alignof(T)     ((size_t)__alignof__(T))
+        #define mecs_alignof(T)     ((mecs_size_t)__alignof__(T))
     #elif defined(__cplusplus)
         /* Portable alignment implementation by Martin Buchholz ( https://wambold.com/Martin/writings/alignof.html ) */
         /* 1) Attempt to find the alignment by rounding to the nearest power of 2. */
@@ -333,9 +336,9 @@ Definition of compiler and platform agnostic standard library types/functions.
             };
         };
 
-        #define mecs_alignof(T)                static_cast<size_t>(mecs_alignof_t<T>::value)
+        #define mecs_alignof(T)                static_cast<mecs_size_t>(mecs_alignof_t<T>::value)
     #else
-        #define mecs_alignof(T)                (((size_t)&( (struct{ mecs_uint8_t b; T t; }* )0 )->t)
+        #define mecs_alignof(T)                (((mecs_size_t)&( (struct{ mecs_uint8_t b; T t; }* )0 )->t)
     #endif
 #endif
 
@@ -395,8 +398,8 @@ typedef struct
 {
     mecs_component_id_t id;
     char const* name;
-    size_t size;
-    size_t alignment;
+    mecs_size_t size;
+    mecs_size_t alignment;
 
     /* Hooks */
     mecs_ctor_func_t ctor_func;
@@ -485,7 +488,7 @@ typedef struct
     /* Evaluating a query only touches the sparse arrays, but chache the dense index as we likely need it to access the component data. */
     mecs_sparse_t sparse_elements[MECS_QUERY_MAX_LEN]; 
 
-    size_t args_len;
+    mecs_size_t args_len;
     mecs_query_arg_t args[MECS_QUERY_MAX_LEN];
 } mecs_query_it_t;
 
@@ -529,8 +532,8 @@ void mecs_component_register_impl(
     mecs_registry_t* io_registry, 
     mecs_component_type_t* io_type, 
     char const* name, 
-    size_t size, 
-    size_t alignment, 
+    mecs_size_t size, 
+    mecs_size_t alignment, 
     mecs_ctor_func_t i_ctor /*= NULL */,
     mecs_dtor_func_t i_dtor /*= NULL */,
     mecs_move_and_dtor_func_t i_move_and_dtor /*= NULL */
@@ -594,8 +597,8 @@ void                    mecs_query_optional_impl(mecs_query_it_t* io_query_it, m
 void                    mecs_query_begin(mecs_registry_t* io_registry, mecs_query_it_t* io_query_it);
 mecs_bool_t             mecs_query_next(mecs_query_it_t* io_query_it);
 mecs_entity_t           mecs_query_entity_get(mecs_query_it_t* io_query_it);
-mecs_bool_t             mecs_query_component_has_impl(mecs_query_it_t* io_query_it, mecs_component_type_t* i_type, size_t i_index);
-void*                   mecs_query_component_get_impl(mecs_query_it_t* io_query_it, mecs_component_type_t* i_type, size_t i_index);
+mecs_bool_t             mecs_query_component_has_impl(mecs_query_it_t* io_query_it, mecs_component_type_t* i_type, mecs_size_t i_index);
+void*                   mecs_query_component_get_impl(mecs_query_it_t* io_query_it, mecs_component_type_t* i_type, mecs_size_t i_index);
 
 #endif /* MECS_H */
 
@@ -659,13 +662,13 @@ Implementaton of compiler and platform agnostic standard library types/functions
     #define mecs_free_aligned(io_data)                          mecs_free_aligned_impl(io_data)
 #endif
 
-    void* mecs_realloc_aligned_impl(void* io_data, size_t i_size, size_t i_alignment)
+    void* mecs_realloc_aligned_impl(void* io_data, mecs_size_t i_size, mecs_size_t i_alignment)
     {
-        size_t offset;
+        mecs_size_t offset;
         mecs_uint8_t* pointer;
         mecs_uint8_t* return_pointer;
-        size_t offset_from_prev_align;
-        size_t offset_to_next_align;
+        mecs_size_t offset_from_prev_align;
+        mecs_size_t offset_to_next_align;
         mecs_assert(i_alignment < 256); /* Maximum supported alignment. */
 
         pointer = ((mecs_uint8_t*)io_data);
@@ -681,7 +684,7 @@ Implementaton of compiler and platform agnostic standard library types/functions
         
         /* Round to the next aligned address. 
         Store the offset from our allocation to this address in the byte before it so we can retreive the orginal address later. */
-        offset_from_prev_align = (size_t)pointer % i_alignment;
+        offset_from_prev_align = (mecs_size_t)pointer % i_alignment;
         offset_to_next_align = i_alignment - offset_from_prev_align;
         return_pointer = pointer + offset_to_next_align;
 
@@ -692,7 +695,7 @@ Implementaton of compiler and platform agnostic standard library types/functions
 
     void mecs_free_aligned_impl(void* io_data)
     {
-        size_t offset;
+        mecs_size_t offset;
         offset = *(((mecs_uint8_t*)io_data) - 1);
         mecs_free(((mecs_uint8_t*)io_data) - offset);
     }
@@ -873,7 +876,7 @@ void mecs_registry_destroy(mecs_registry_t* io_registry)
     mecs_free(io_registry);
 }
 
-void mecs_component_register_impl(mecs_registry_t* io_registry, mecs_component_type_t* io_type, char const* name, size_t size, size_t alignment, mecs_ctor_func_t i_ctor /*= NULL */, mecs_dtor_func_t i_dtor /*= NULL */, mecs_move_and_dtor_func_t i_move_and_dtor /*= NULL */)
+void mecs_component_register_impl(mecs_registry_t* io_registry, mecs_component_type_t* io_type, char const* name, mecs_size_t size, mecs_size_t alignment, mecs_ctor_func_t i_ctor /*= NULL */, mecs_dtor_func_t i_dtor /*= NULL */, mecs_move_and_dtor_func_t i_move_and_dtor /*= NULL */)
 {
     mecs_component_id_t component_id;
     mecs_component_size_t components_grown_size;
@@ -1421,7 +1424,7 @@ void mecs_query_optional_impl(mecs_query_it_t* io_query_it, mecs_component_type_
 
 void mecs_query_begin(mecs_registry_t* io_registry, mecs_query_it_t* io_query_it)
 {
-    size_t arg_idx;
+    mecs_size_t arg_idx;
     mecs_query_type_t type;
     mecs_component_id_t component_id;
     mecs_entity_size_t entities_count;
@@ -1464,7 +1467,7 @@ void mecs_query_begin(mecs_registry_t* io_registry, mecs_query_it_t* io_query_it
 
 mecs_bool_t mecs_query_next(mecs_query_it_t* io_query_it)
 {
-    size_t arg_idx;
+    mecs_size_t arg_idx;
     mecs_query_type_t type;
     mecs_component_id_t component_id;
     mecs_component_store_t* component_store;
@@ -1513,13 +1516,13 @@ mecs_entity_t mecs_query_entity_get(mecs_query_it_t* io_query_it)
     return *(io_query_it->current - 1);
 }
 
-mecs_bool_t mecs_query_component_has_impl(mecs_query_it_t* io_query_it, mecs_component_type_t* i_type, size_t i_index)
+mecs_bool_t mecs_query_component_has_impl(mecs_query_it_t* io_query_it, mecs_component_type_t* i_type, mecs_size_t i_index)
 {
     mecs_assert(io_query_it->args[i_index].component_type->id == i_type->id);
     return io_query_it->sparse_elements[i_index] != MECS_SPARSE_INVALID;
 }
 
-void* mecs_query_component_get_impl(mecs_query_it_t* io_query_it, mecs_component_type_t* i_type, size_t i_index)
+void* mecs_query_component_get_impl(mecs_query_it_t* io_query_it, mecs_component_type_t* i_type, mecs_size_t i_index)
 {
     mecs_assert(io_query_it->args[i_index].component_type->id == i_type->id);
     return mecs_component_get_component_element(&io_query_it->component_stores[i_type->id], mecs_entity_get_id(io_query_it->sparse_elements[i_index]));

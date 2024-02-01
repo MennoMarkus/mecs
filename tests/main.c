@@ -72,28 +72,28 @@
 #define test_uint(i_value, i_expected)                                                              \
     MECS_CONST_EXPR_IF ((i_value) != (i_expected))                                                  \
     {                                                                                               \
-        size_t value = (size_t)(i_value);                                                           \
-        size_t expected = (size_t)(i_expected);                                                     \
+        mecs_size_t value = (mecs_size_t)(i_value);                                                           \
+        mecs_size_t expected = (mecs_size_t)(i_expected);                                                     \
         printf("Test line %d failed. Expected: %zu, Got: %zu\n", __LINE__, expected, value);        \
         assert(0);                                                                                  \
     }                                                                                               \
 
 typedef struct 
 {
-    size_t address;
-    size_t size;
+    mecs_size_t address;
+    mecs_size_t size;
     char freed;
 } allocation_t;
 
 #define MAX_ALLOCATIONS 1024
 allocation_t g_memory_leak_allocations[MAX_ALLOCATIONS];
-size_t g_memory_leak_total_allocations_made;
-size_t g_memory_leak_total_allocated;
-size_t g_memory_leak_total_freed;
+mecs_size_t g_memory_leak_total_allocations_made;
+mecs_size_t g_memory_leak_total_allocated;
+mecs_size_t g_memory_leak_total_freed;
 
 void memory_leak_detector_init(void) 
 { 
-    size_t i;
+    mecs_size_t i;
     for (i = 0; i < MAX_ALLOCATIONS; ++i)
     {
         g_memory_leak_allocations[i].address = 0;
@@ -107,7 +107,7 @@ void memory_leak_detector_init(void)
 
 void memory_leak_detector_shutdown(void) 
 { 
-    size_t i;
+    mecs_size_t i;
     printf("--------------------------------------------------\n");
     for (i = 0; i < MAX_ALLOCATIONS; ++i)
     {
@@ -133,16 +133,16 @@ void memory_leak_detector_shutdown(void)
     printf("--------------------------------------------------\n");
 }
 
-void* memory_leak_detector_realloc(void* i_ptr, size_t i_size) 
+void* memory_leak_detector_realloc(void* i_ptr, mecs_size_t i_size) 
 { 
-    size_t i;
+    mecs_size_t i;
     g_memory_leak_total_allocated += i_size; 
 
     if (i_ptr != NULL)
     {
         for (i = 0; i < MAX_ALLOCATIONS; ++i)
         {
-            if (g_memory_leak_allocations[i].address == (size_t)i_ptr)
+            if (g_memory_leak_allocations[i].address == (mecs_size_t)i_ptr)
             {
                 if (g_memory_leak_allocations[i].freed == 1)
                 {
@@ -159,9 +159,9 @@ void* memory_leak_detector_realloc(void* i_ptr, size_t i_size)
     i_ptr = realloc(i_ptr, i_size);
     for (i = 0; i < MAX_ALLOCATIONS; ++i)
     {
-        if (g_memory_leak_allocations[i].address == (size_t)i_ptr || g_memory_leak_allocations[i].address == 0)
+        if (g_memory_leak_allocations[i].address == (mecs_size_t)i_ptr || g_memory_leak_allocations[i].address == 0)
         {
-            g_memory_leak_allocations[i].address = (size_t)i_ptr;
+            g_memory_leak_allocations[i].address = (mecs_size_t)i_ptr;
             g_memory_leak_allocations[i].size = i_size;
             g_memory_leak_allocations[i].freed = 0;
             g_memory_leak_total_allocations_made += 1;
@@ -175,10 +175,10 @@ void* memory_leak_detector_realloc(void* i_ptr, size_t i_size)
 
 void memory_leak_detector_free(void* i_ptr) 
 { 
-    size_t i;
+    mecs_size_t i;
     for (i = 0; i < MAX_ALLOCATIONS; ++i)
     {
-        if (g_memory_leak_allocations[i].address == (size_t)i_ptr)
+        if (g_memory_leak_allocations[i].address == (mecs_size_t)i_ptr)
         {
             if (g_memory_leak_allocations[i].freed == 1)
             {
@@ -191,7 +191,7 @@ void memory_leak_detector_free(void* i_ptr)
             return;
         }
     }
-    printf("Allocation not found. Address: %zx\n", (size_t)i_ptr);
+    printf("Allocation not found. Address: %zx\n", (mecs_size_t)i_ptr);
     assert(0);
 }
 
@@ -410,7 +410,7 @@ void test_query(void)
     test_comp_4* comp4;
     test_comp_8* comp8;
     query_it_t query0, query1, query2, query3;
-    size_t query0_count, query1_count, query2_count, query3_count;
+    mecs_size_t query0_count, query1_count, query2_count, query3_count;
 
     registry = registry_create(2);
     COMPONENT_REGISTER(registry, test_comp_4);
@@ -571,7 +571,7 @@ void test_serialise(void)
     cpp::test_comp_serialise_cpp* comp2;
     #endif
     void* buffer;
-    size_t buffer_size;
+    mecs_size_t buffer_size;
 
     /* Serialisation */
     {
